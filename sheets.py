@@ -10,7 +10,11 @@ from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME
 # AUTH (через ENV, а не файл)
 # =====================================================
 
-SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
+SCOPE = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
 
 def get_client():
     if not GOOGLE_CREDENTIALS:
@@ -18,7 +22,7 @@ def get_client():
 
     creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
-    # 🔥 ФИКС ДЛЯ PRIVATE KEY (САМОЕ ВАЖНОЕ)
+    # 🔥 фикс переносов строки
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
@@ -49,20 +53,24 @@ def get_user_lang(user_id: int):
         for r in ws.get_all_records():
             if str(r.get("user_id")) == str(user_id):
                 return r.get("lang")
-    except:
-        pass
+    except Exception as e:
+        print(f"❌ get_user_lang error: {e}")
     return None
 
 
 def set_user_lang(user_id: int, lang: str):
+    print(f"🔥 set_user_lang: {user_id} -> {lang}")
+
     ws = get_spreadsheet().worksheet("users")
     rows = ws.get_all_records()
 
     for i, r in enumerate(rows, start=2):
         if str(r.get("user_id")) == str(user_id):
+            print("♻️ updating existing user")
             ws.update_cell(i, 2, lang)
             return
 
+    print("➕ adding new user")
     ws.append_row([user_id, lang])
 
 
@@ -76,8 +84,8 @@ def get_admin_role(user_id: int):
         for r in ws.get_all_records():
             if str(r.get("user_id")) == str(user_id):
                 return r.get("role")
-    except:
-        pass
+    except Exception as e:
+        print(f"❌ get_admin_role error: {e}")
     return None
 
 
@@ -96,7 +104,8 @@ def get_contacts():
                 result.append(line)
 
         return result
-    except:
+    except Exception as e:
+        print(f"❌ get_contacts error: {e}")
         return []
 
 
