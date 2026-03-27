@@ -4,6 +4,7 @@ import traceback
 import httpx
 import threading
 import time
+import os
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -43,12 +44,11 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# KEEP ALIVE (УЛУЧШЕННЫЙ 🔥)
+# SELF PING (ANTI-SLEEP)
 # =========================================
 
 def self_ping():
-    base_url = WEBHOOK_URL.replace("/webhook", "")
-    url = f"{base_url}/health"
+    url = os.getenv("SELF_PING_URL", "https://kinder-spa.onrender.com/ping")
 
     while True:
         try:
@@ -96,7 +96,7 @@ async def webhook(request: Request):
 
 
 # =========================================
-# HEALTH
+# HEALTH / PING
 # =========================================
 
 @app.get("/")
@@ -104,8 +104,8 @@ async def root():
     return {"status": "alive"}
 
 
-@app.get("/health")
-async def health():
+@app.get("/ping")
+async def ping():
     return {"status": "ok"}
 
 
@@ -124,7 +124,7 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 запускаем self-ping
+    # запуск self-ping
     try:
         start_self_ping()
     except Exception as e:
