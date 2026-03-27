@@ -2,6 +2,8 @@ import asyncio
 import logging
 import traceback
 import httpx
+import threading
+import time
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -36,27 +38,33 @@ async def notify_error(e: Exception):
 
     try:
         await BOT.send_message(OPERATOR_ID, text, parse_mode="HTML")
-    except Exception as send_err:
-        logging.error(f"Error sending error message: {send_err}")
+    except Exception as err:
+        logging.error(f"Notify error failed: {err}")
 
 
 # =========================================
-# KEEP ALIVE (FIXED 🔥)
+# KEEP ALIVE (УЛУЧШЕННЫЙ 🔥)
 # =========================================
 
-async def keep_alive():
+def self_ping():
     base_url = WEBHOOK_URL.replace("/webhook", "")
     url = f"{base_url}/health"
 
     while True:
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.get(url)
-                logging.info("🔄 Keep-alive ping sent")
+            with httpx.Client(timeout=10) as client:
+                r = client.get(url)
+                logging.info(f"🔄 Self ping: {r.status_code}")
         except Exception as e:
-            logging.error(f"KeepAlive error: {e}")
+            logging.error(f"Self ping error: {e}")
 
-        await asyncio.sleep(600)
+        time.sleep(600)  # 10 минут
+
+
+def start_self_ping():
+    thread = threading.Thread(target=self_ping)
+    thread.daemon = True
+    thread.start()
 
 
 # =========================================
@@ -88,7 +96,7 @@ async def webhook(request: Request):
 
 
 # =========================================
-# HEALTH CHECK (ВАЖНО)
+# HEALTH
 # =========================================
 
 @app.get("/")
@@ -116,11 +124,11 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 запускаем keep_alive
+    # 🔥 запускаем self-ping
     try:
-        asyncio.create_task(keep_alive())
+        start_self_ping()
     except Exception as e:
-        logging.error(f"KeepAlive start error: {e}")
+        logging.error(f"Self ping start error: {e}")
 
 
 @app.on_event("shutdown")
