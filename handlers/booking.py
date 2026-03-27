@@ -1,4 +1,5 @@
 ﻿from aiogram import Router, F
+from sheets import notify_error
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -270,50 +271,73 @@ async def child_age(message: Message, state: FSMContext):
 
 @router.message(BookingState.phone, F.contact)
 async def phone(message: Message, state: FSMContext):
-    data = await state.get_data()
-    phone = message.contact.phone_number
-    lang = get_user_lang(message.from_user.id) or "ru"
+    try:
+        data = await state.get_data()
+        phone = message.contact.phone_number
+        lang = get_user_lang(message.from_user.id) or "ru"
 
-    create_appointment(
-        user_id=message.from_user.id,
-        massage_id=data["massage_id"],
-        therapist_id=data["therapist_id"],
-        datetime_str=f"{data['date']} {data['time']}",
-        parent_name=data["parent_name"],
-        child_name=data["child_name"],
-        child_age=data["child_age"],
-        phone=phone,
-    )
+        print("🔥 ДОШЛИ ДО СОХРАНЕНИЯ")
 
-    ws = get_spreadsheet().worksheet("appointments")
-    row = len(ws.get_all_records()) + 1
+        # ✅ сохраняем
+        create_appointment(
+            user_id=message.from_user.id,
+            massage_id=data["massage_id"],
+            therapist_id=data["therapist_id"],
+            datetime_str=f"{data['date']} {data['time']}",
+            parent_name=data["parent_name"],
+            child_name=data["child_name"],
+            child_age=data["child_age"],
+            phone=phone,
+        )
 
-    massage_name = get_massage_name(data["massage_id"], lang)
-    therapist_name = get_therapist_name(data["therapist_id"])
+        # ✅ ПРАВИЛЬНО получаем последнюю строку
+        ws = get_spreadsheet().worksheet("appointments")
+        row = len(ws.col_values(1))  # 🔥 ВОТ ФИКС
 
-    operator_text = (
-        "🆕 <b>Новая заявка</b>\n\n"
-        f"💆 Массаж: {massage_name}\n"
-        f"🧑‍⚕️ Специалист: {therapist_name}\n"
-        f"📅 Дата: {data['date']} {data['time']}\n"
-        f"👶 Ребёнок: {data['child_name']} ({data['child_age']} мес)\n"
-        f"📞 Телефон: {phone}"
-    )
+        massage_name = get_massage_name(data["massage_id"], lang)
+        therapist_name = get_therapist_name(data["therapist_id"])
 
-    admins_ws = get_spreadsheet().worksheet("admins")
-    for r in admins_ws.get_all_records():
-        if r.get("role") == "operator":
-            await message.bot.send_message(
-                int(r["user_id"]),
-                operator_text,
-                parse_mode="HTML",
-                reply_markup=operator_keyboard(row)
-            )
+        operator_text = (
+            "🆕 <b>Новая заявка</b>\n\n"
+            f"💆 Массаж: {massage_name}\n"
+            f"🧑‍⚕️ Специалист: {therapist_name}\n"
+            f"📅 Дата: {data['date']} {data['time']}\n"
+            f"👶 Ребёнок: {data['child_name']} ({data['child_age']} мес)\n"
+            f"📞 Телефон: {phone}"
+        )
 
-    await message.answer(
-        TEXT_AFTER_BOOKING.get(lang, TEXT_AFTER_BOOKING["ru"]),
-        parse_mode="HTML",
-        reply_markup=main_menu(lang),
-    )
+        # ✅ отправка операторам
+        admins_ws = get_spreadsheet().worksheet("admins")
+        sent = False
+
+        for r in admins_ws.get_all_records():
+            if r.get("role") == "operator":
+                try:
+                    await message.bot.send_message(
+                        int(r["user_id"]),
+                        operator_text,
+                        parse_mode="HTML",
+                        reply_markup=operator_keyboard(row)
+                    )
+                    sent = True
+                except Exception as e:
+                    notify_error(e)
+
+        if not sent:
+            print("❌ ОПЕРАТОР НЕ НАЙДЕН")
+
+        # ✅ ответ пользователю
+        await message.answer(
+            TEXT_AFTER_BOOKING.get(lang, TEXT_AFTER_BOOKING["ru"]),
+            parse_mode="HTML",
+            reply_markup=main_menu(lang),
+        )
+
+        await state.clear()
+
+    except Exception as e:
+        print("💥 ОШИБКА В BOOKING:", e)
+        notify_error(e)
+        await message.answer("❌ Ошибка при записи")
 
     await state.clear()
