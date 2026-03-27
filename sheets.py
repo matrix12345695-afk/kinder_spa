@@ -11,6 +11,7 @@ from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME, BOT_TOKEN
 
 OPERATOR_ID = 177536138
 
+
 # =====================================================
 # ERROR REPORT
 # =====================================================
@@ -174,7 +175,7 @@ def get_contacts():
 
 
 # =====================================================
-# MASSAGES (ИСПРАВЛЕНО)
+# MASSAGES
 # =====================================================
 
 def get_active_masses(lang: str = "ru"):
@@ -201,8 +202,6 @@ def get_active_masses(lang: str = "ru"):
                     "name": name,
                     "price": r.get("price") or r.get("cost") or r.get("цена") or 0,
                     "duration": int(r.get("duration_min", 0)),
-
-                    # ВАЖНО
                     "age_from": r.get("age_from", ""),
                     "age_to": r.get("age_to", ""),
                 })
@@ -375,10 +374,14 @@ def get_all_appointments_full(user_id: int, lang: str = "ru"):
     except Exception as e:
         notify_error(e)
         return []
-        def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
-    try:
-        from datetime import datetime, timedelta
 
+
+# =====================================================
+# FREE TIMES (ИСПРАВЛЕНО!)
+# =====================================================
+
+def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
+    try:
         ss = get_spreadsheet()
         if not ss:
             return []
@@ -386,11 +389,9 @@ def get_all_appointments_full(user_id: int, lang: str = "ru"):
         ws = ss.worksheet("appointments")
         records = ws.get_all_records()
 
-        # рабочий день
         start_hour = 9
         end_hour = 18
 
-        # все слоты (каждые 30 мин)
         slots = []
         current = datetime.strptime(f"{date_str} {start_hour}:00", "%Y-%m-%d %H:%M")
 
@@ -398,7 +399,6 @@ def get_all_appointments_full(user_id: int, lang: str = "ru"):
             slots.append(current)
             current += timedelta(minutes=30)
 
-        # занятые
         busy = []
 
         for r in records:
