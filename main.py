@@ -58,7 +58,7 @@ async def webhook(request: Request):
     try:
         data = await request.json()
         update = types.Update(**data)
-        await dp.feed_update(BOT, update)
+        await dp.feed_update(bot=BOT, update=update)
         return {"ok": True}
     except Exception as e:
         await notify_error(e)
@@ -68,20 +68,6 @@ async def webhook(request: Request):
 @app.get("/")
 async def root():
     return {"status": "alive"}
-
-
-# =========================================
-# KEEP ALIVE
-# =========================================
-
-async def self_ping():
-    while True:
-        try:
-            async with httpx.AsyncClient() as client:
-                await client.get(WEBHOOK_URL)
-        except:
-            pass
-        await asyncio.sleep(300)
 
 
 # =========================================
@@ -95,9 +81,6 @@ async def on_startup():
     try:
         await BOT.delete_webhook(drop_pending_updates=True)
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
-
-        asyncio.create_task(self_ping())
-
     except Exception as e:
         await notify_error(e)
 
