@@ -52,7 +52,7 @@ async def keep_alive():
         except Exception as e:
             print(f"Ping error: {e}")
 
-        await asyncio.sleep(600)  # 10 минут
+        await asyncio.sleep(600)
 
 
 # =========================================
@@ -100,7 +100,6 @@ async def on_startup():
         await BOT.delete_webhook(drop_pending_updates=True)
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
 
-        # 🔥 запускаем keep_alive
         asyncio.create_task(keep_alive())
 
     except Exception as e:
