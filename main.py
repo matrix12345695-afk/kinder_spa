@@ -112,8 +112,12 @@ async def on_startup():
 
         print("✅ Webhook установлен:", WEBHOOK_URL)
 
+        # 🔥 безопасный запуск self_ping
+        asyncio.create_task(self_ping())
+
     except Exception as e:
         print("❌ START ERROR:", e)
+        await notify_error(e)
 
 
 # =====================================================
