@@ -107,16 +107,13 @@ async def on_startup():
     print("🚀 STARTING BOT...")
 
     try:
-        # 💥 очищаем старый webhook
         await bot.delete_webhook(drop_pending_updates=True)
-
         await bot.set_webhook(WEBHOOK_URL + "/webhook")
+
         print("✅ Webhook установлен:", WEBHOOK_URL)
 
-        asyncio.create_task(self_ping())
-
     except Exception as e:
-        await notify_error(e)
+        print("❌ START ERROR:", e)
 
 
 # =====================================================
