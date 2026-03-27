@@ -41,7 +41,7 @@ async def start_booking(message: Message, state: FSMContext):
 
     for m in get_active_masses(lang):
         text = (
-            f"💆‍♂️ {m['name_ru']}\n"
+            f"💆‍♂️ {m['name']}\n"
             f"👶 {m['age_from']}-{m['age_to']} лет\n"
             f"⏱ {m['duration_min']} мин\n"
             f"💰 {m['price']} сум"
