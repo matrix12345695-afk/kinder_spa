@@ -1,10 +1,13 @@
-﻿from aiogram import Router, F
+from aiogram import Router, F
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.filters import Command
 
 from sheets import (
     get_admin_role,
-    get_all_appointments_full,
     update_appointment_status,
+    get_spreadsheet,
+    get_massage_name,
+    get_therapist_name
 )
 
 router = Router()
@@ -22,9 +25,9 @@ def admin_menu():
 
 
 # =========================
-# ADMIN PANEL
+# ADMIN PANEL (ИСПРАВЛЕНО)
 # =========================
-@router.message(F.text == "/admin")
+@router.message(Command("admin"))
 async def admin_panel(message: Message):
     role = get_admin_role(message.from_user.id)
 
@@ -39,7 +42,7 @@ async def admin_panel(message: Message):
 
 
 # =========================
-# ALL APPOINTMENTS
+# ALL APPOINTMENTS (ИСПРАВЛЕНО)
 # =========================
 @router.callback_query(F.data == "admin_all")
 async def admin_all(cb: CallbackQuery):
@@ -48,46 +51,61 @@ async def admin_all(cb: CallbackQuery):
         await cb.answer("Нет доступа", show_alert=True)
         return
 
-    apps = get_all_appointments_full()
+    ss = get_spreadsheet()
+    if not ss:
+        await cb.message.answer("❌ Ошибка подключения к таблице")
+        return
 
-    if not apps:
+    ws = ss.worksheet("appointments")
+    rows = ws.get_all_records()
+
+    if not rows:
         await cb.message.answer("Записей нет")
         await cb.answer()
         return
 
-    for a in apps:
-        text = (
-            f"🆔 {a['id']}\n"
-            f"💆 {a['massage']}\n"
-            f"🧑‍⚕️ {a['therapist']}\n"
-            f"📅 {a['datetime']}\n"
-            f"🧸 {a['child_name']}\n"
-            f"📞 {a['phone']}\n"
-            f"🏷 Статус: {a['status']}"
-        )
+    for idx, r in enumerate(rows, start=2):
+        try:
+            massage = get_massage_name(int(r.get("massage_id", 0)))
+            therapist = get_therapist_name(int(r.get("therapist_id", 0)))
 
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✅ Подтвердить",
-                        callback_data=f"admin_confirm_{a['id']}"
-                    ),
-                    InlineKeyboardButton(
-                        text="🏁 Завершить",
-                        callback_data=f"admin_done_{a['id']}"
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(
-                        text="❌ Отменить",
-                        callback_data=f"admin_cancel_{a['id']}"
-                    )
+            text = (
+                f"🆔 {idx}\n"
+                f"💆 {massage}\n"
+                f"🧑‍⚕️ {therapist}\n"
+                f"📅 {r.get('datetime')}\n"
+                f"👩 {r.get('parent_name')}\n"
+                f"🧸 {r.get('child_name')}\n"
+                f"📊 {r.get('child_age')} мес\n"
+                f"📞 {r.get('phone')}\n"
+                f"🏷 Статус: {r.get('status')}"
+            )
+
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="✅ Подтвердить",
+                            callback_data=f"admin_confirm_{idx}"
+                        ),
+                        InlineKeyboardButton(
+                            text="🏁 Завершить",
+                            callback_data=f"admin_done_{idx}"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="❌ Отменить",
+                            callback_data=f"admin_cancel_{idx}"
+                        )
+                    ]
                 ]
-            ]
-        )
+            )
 
-        await cb.message.answer(text, reply_markup=kb)
+            await cb.message.answer(text, reply_markup=kb)
+
+        except Exception as e:
+            print("ADMIN ERROR:", e)
 
     await cb.answer()
 
@@ -102,8 +120,8 @@ async def admin_confirm(cb: CallbackQuery):
         await cb.answer("Нет доступа", show_alert=True)
         return
 
-    app_id = int(cb.data.split("_")[-1])
-    update_appointment_status(app_id, "confirmed")
+    row = int(cb.data.split("_")[-1])
+    update_appointment_status(row, "confirmed")
 
     await cb.message.answer("✅ Запись подтверждена")
     await cb.answer()
@@ -116,8 +134,8 @@ async def admin_done(cb: CallbackQuery):
         await cb.answer("Нет доступа", show_alert=True)
         return
 
-    app_id = int(cb.data.split("_")[-1])
-    update_appointment_status(app_id, "done")
+    row = int(cb.data.split("_")[-1])
+    update_appointment_status(row, "done")
 
     await cb.message.answer("🏁 Запись завершена")
     await cb.answer()
@@ -130,8 +148,8 @@ async def admin_cancel(cb: CallbackQuery):
         await cb.answer("Нет доступа", show_alert=True)
         return
 
-    app_id = int(cb.data.split("_")[-1])
-    update_appointment_status(app_id, "cancelled")
+    row = int(cb.data.split("_")[-1])
+    update_appointment_status(row, "cancelled")
 
     await cb.message.answer("❌ Запись отменена")
     await cb.answer()
