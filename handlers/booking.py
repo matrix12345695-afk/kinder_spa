@@ -66,8 +66,8 @@ async def start_booking(message: Message, state: FSMContext):
     for m in massages:
         text = (
             f"💆‍♂️ {m.get('name', 'Без названия')}\n"
-            f"👶 {m.get('age_from', '?')}-{m.get('age_to', '?')} лет\n"
-            f"⏱ {m.get('duration_min', m.get('duration', '?'))} мин\n"
+            f"👶 {m.get('age_from', '?')} - {m.get('age_to', '?')}\n"
+            f"⏱ {m.get('duration', m.get('duration_min', '?'))} мин\n"
             f"💰 {m.get('price', '?')} сум"
         )
 
@@ -96,7 +96,7 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
             if m.get("id") == massage_id:
                 await state.update_data(
                     massage_id=massage_id,
-                    massage_duration=m.get("duration_min", 30)
+                    massage_duration=m.get("duration", m.get("duration_min", 30))
                 )
 
         await state.set_state(BookingState.therapist)
@@ -137,28 +137,33 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
-    therapist_id = int(cb.data.replace("therapist_", ""))
+    try:
+        therapist_id = int(cb.data.replace("therapist_", ""))
 
-    await state.update_data(therapist_id=therapist_id)
-    await state.set_state(BookingState.date)
+        await state.update_data(therapist_id=therapist_id)
+        await state.set_state(BookingState.date)
 
-    today = date.today()
+        today = date.today()
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text=(today + timedelta(days=i)).strftime("%d.%m"),
-                callback_data=(today + timedelta(days=i)).isoformat()
-            )
-        ] for i in range(7)]
-    )
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text=(today + timedelta(days=i)).strftime("%d.%m"),
+                    callback_data=(today + timedelta(days=i)).isoformat()
+                )
+            ] for i in range(7)]
+        )
 
-    await cb.message.answer("📅 Выберите дату:", reply_markup=kb)
-    await cb.answer()
+        await cb.message.answer("📅 Выберите дату:", reply_markup=kb)
+        await cb.answer()
+
+    except Exception as e:
+        notify_error(e)
+        await cb.message.answer("❌ Ошибка")
 
 
 # =========================================
-# DATE
+# DATE (ИСПРАВЛЕНО)
 # =========================================
 
 @router.callback_query(BookingState.date)
@@ -166,17 +171,15 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     try:
         data = await state.get_data()
 
-        # 💡 ПАРСИМ ISO ДАТУ
-        selected_date = cb.data  # уже ISO: YYYY-MM-DD
+        selected_date = cb.data  # ISO формат
 
-        # 💡 ПРОВЕРКА
         if not selected_date or "-" not in selected_date:
             await cb.message.answer("❌ Ошибка даты")
             return
 
         times = get_free_times(
             therapist_id=data.get("therapist_id"),
-            date_str=selected_date,  # ОСТАВЛЯЕМ ISO!
+            date_str=selected_date,
             duration_min=data.get("massage_duration", 30),
         )
 
@@ -185,7 +188,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
             return
 
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[[ 
+            inline_keyboard=[[
                 InlineKeyboardButton(text=t, callback_data=f"time_{t}")
             ] for t in times]
         )
@@ -199,6 +202,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     except Exception as e:
         notify_error(e)
         await cb.message.answer("❌ Ошибка")
+
 
 # =========================================
 # TIME
