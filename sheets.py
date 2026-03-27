@@ -36,7 +36,7 @@ def get_spreadsheet():
     if not SPREADSHEET_NAME:
         raise ValueError("❌ SPREADSHEET_NAME не задан")
 
-    return client.open(SPREADSHEET_NAME)
+    return client.open_by_key(SPREADSHEET_NAME)
 
 
 # =====================================================
