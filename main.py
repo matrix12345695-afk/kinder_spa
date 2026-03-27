@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import httpx
+import traceback
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -8,10 +9,10 @@ from aiogram import Bot, Dispatcher, types
 from config import BOT_TOKEN, WEBHOOK_URL
 from handlers import start, booking, contacts, my_appointments, operator_appointments, admin
 
-# ❌ УБРАЛИ scheduler (ломал запуск)
-# from scheduler import start_scheduler
-
 logging.basicConfig(level=logging.INFO)
+
+# 👇 ВСТАВЬ СВОЙ ID
+OPERATOR_ID = 502438855
 
 # 💥 Проверка ENV
 if not BOT_TOKEN:
@@ -26,7 +27,28 @@ dp = Dispatcher()
 app = FastAPI()
 
 
+# =====================================================
+# 🔥 ERROR HANDLER
+# =====================================================
+
+async def notify_error(e: Exception):
+    error_text = (
+        "🚨 <b>Ошибка в боте</b>\n\n"
+        f"<b>Тип:</b> {type(e).__name__}\n"
+        f"<b>Ошибка:</b> {str(e)}\n\n"
+        f"<pre>{traceback.format_exc()}</pre>"
+    )
+
+    try:
+        await bot.send_message(OPERATOR_ID, error_text, parse_mode="HTML")
+    except:
+        pass
+
+
+# =====================================================
 # 🔹 роутеры
+# =====================================================
+
 dp.include_router(start.router)
 dp.include_router(booking.router)
 dp.include_router(contacts.router)
@@ -35,46 +57,77 @@ dp.include_router(operator_appointments.router)
 dp.include_router(admin.router)
 
 
-# 🔹 webhook
+# =====================================================
+# 🔥 WEBHOOK (ЗАЩИЩЁН)
+# =====================================================
+
 @app.post("/webhook")
 async def webhook(request: Request):
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.feed_update(bot, update)
-    return {"ok": True}
+    try:
+        data = await request.json()
+        update = types.Update(**data)
+        await dp.feed_update(bot, update)
+        return {"ok": True}
+
+    except Exception as e:
+        await notify_error(e)
+        return {"ok": False}
 
 
+# =====================================================
 # 🔹 проверка сервера
+# =====================================================
+
 @app.get("/")
 async def root():
     return {"status": "alive 🚀"}
 
 
-# 🔥 анти-сон (Render любит усыплять)
+# =====================================================
+# 🔥 анти-сон (Render)
+# =====================================================
+
 async def self_ping():
     while True:
         try:
             async with httpx.AsyncClient() as client:
                 await client.get(WEBHOOK_URL)
         except Exception as e:
-            print("Ping error:", e)
+            await notify_error(e)
+
         await asyncio.sleep(300)
 
+
+# =====================================================
+# 🔥 STARTUP
+# =====================================================
 
 @app.on_event("startup")
 async def on_startup():
     print("🚀 STARTING BOT...")
 
-    await bot.set_webhook(WEBHOOK_URL + "/webhook")
-    print("✅ Webhook установлен:", WEBHOOK_URL)
+    try:
+        # 💥 очищаем старый webhook
+        await bot.delete_webhook(drop_pending_updates=True)
 
-    # ❌ временно отключено (чтобы не падало)
-    # start_scheduler(bot)
+        await bot.set_webhook(WEBHOOK_URL + "/webhook")
+        print("✅ Webhook установлен:", WEBHOOK_URL)
 
-    asyncio.create_task(self_ping())
+        asyncio.create_task(self_ping())
 
+    except Exception as e:
+        await notify_error(e)
+
+
+# =====================================================
+# 🔥 SHUTDOWN
+# =====================================================
 
 @app.on_event("shutdown")
 async def on_shutdown():
     print("🛑 BOT STOPPED")
-    await bot.delete_webhook()
+
+    try:
+        await bot.delete_webhook()
+    except Exception as e:
+        await notify_error(e)
