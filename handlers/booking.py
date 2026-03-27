@@ -31,11 +31,11 @@ def operator_keyboard(row: int):
 
 
 # =========================================
-# AGE PARSER
+# AGE PARSER (улучшен)
 # =========================================
 
 def parse_age(text: str) -> int:
-    text = text.lower().replace(" ", "")
+    text = text.lower().replace(" ", "").replace(",", ".")
 
     if "г" in text:
         num = text.replace("г", "").replace("лет", "")
@@ -45,7 +45,7 @@ def parse_age(text: str) -> int:
         num = text.replace("м", "")
         return int(num)
 
-    return int(text)
+    return int(float(text))
 
 
 # =========================================
@@ -90,9 +90,13 @@ async def start_booking(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
     try:
+        await cb.answer()
+
         massage_id = int(cb.data.replace("massage_", ""))
 
-        for m in get_active_masses():
+        lang = get_user_lang(cb.from_user.id) or "ru"
+
+        for m in get_active_masses(lang):
             if m.get("id") == massage_id:
                 await state.update_data(
                     massage_id=massage_id,
@@ -124,8 +128,6 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 
             await cb.message.answer(text, reply_markup=kb)
 
-        await cb.answer()
-
     except Exception as e:
         notify_error(e)
         await cb.message.answer("❌ Ошибка")
@@ -138,6 +140,8 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     try:
+        await cb.answer()
+
         therapist_id = int(cb.data.replace("therapist_", ""))
 
         await state.update_data(therapist_id=therapist_id)
@@ -155,7 +159,6 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
         )
 
         await cb.message.answer("📅 Выберите дату:", reply_markup=kb)
-        await cb.answer()
 
     except Exception as e:
         notify_error(e)
@@ -169,12 +172,18 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 @router.callback_query(BookingState.date)
 async def choose_date(cb: CallbackQuery, state: FSMContext):
     try:
+        await cb.answer()
+
         data = await state.get_data()
 
         selected_date = cb.data
 
         if not selected_date or "-" not in selected_date:
             await cb.message.answer("❌ Ошибка даты")
+            return
+
+        if not data.get("therapist_id"):
+            await cb.message.answer("❌ Ошибка специалиста")
             return
 
         times = get_free_times(
@@ -197,7 +206,6 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
         await state.set_state(BookingState.time)
 
         await cb.message.answer("⏰ Выберите время:", reply_markup=kb)
-        await cb.answer()
 
     except Exception as e:
         notify_error(e)
@@ -210,11 +218,12 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
 
 @router.callback_query(BookingState.time)
 async def choose_time(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+
     await state.update_data(time=cb.data.replace("time_", ""))
     await state.set_state(BookingState.parent)
 
     await cb.message.answer("👨‍👩‍👧 Введите имя родителя")
-    await cb.answer()
 
 
 # =========================================
@@ -260,13 +269,23 @@ async def child_age(message: Message, state: FSMContext):
 
 
 # =========================================
-# FINAL (ИСПРАВЛЕНО 🔥)
+# FINAL
 # =========================================
 
 @router.message(BookingState.phone, F.contact)
 async def phone(message: Message, state: FSMContext):
     try:
         data = await state.get_data()
+
+        if not all([
+            data.get("massage_id"),
+            data.get("therapist_id"),
+            data.get("date"),
+            data.get("time"),
+        ]):
+            await message.answer("❌ Ошибка данных, начните заново")
+            await state.clear()
+            return
 
         create_appointment(
             user_id=message.from_user.id,
@@ -280,7 +299,7 @@ async def phone(message: Message, state: FSMContext):
         )
 
         ws = get_spreadsheet().worksheet("appointments")
-        row = len(ws.col_values(1))
+        row = len(ws.get_all_records()) + 1
 
         massage_name = get_massage_name(data.get("massage_id"))
         therapist_name = get_therapist_name(data.get("therapist_id"))
