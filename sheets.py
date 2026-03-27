@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import gspread
 from datetime import datetime, timedelta
@@ -17,6 +17,10 @@ def get_client():
         raise ValueError("❌ GOOGLE_CREDENTIALS не задан")
 
     creds_dict = json.loads(GOOGLE_CREDENTIALS)
+
+    # 🔥 ФИКС ДЛЯ PRIVATE KEY (САМОЕ ВАЖНОЕ)
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
     creds = Credentials.from_service_account_info(
         creds_dict,
