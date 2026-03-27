@@ -375,3 +375,62 @@ def get_all_appointments_full(user_id: int, lang: str = "ru"):
     except Exception as e:
         notify_error(e)
         return []
+        def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
+    try:
+        from datetime import datetime, timedelta
+
+        ss = get_spreadsheet()
+        if not ss:
+            return []
+
+        ws = ss.worksheet("appointments")
+        records = ws.get_all_records()
+
+        # рабочий день
+        start_hour = 9
+        end_hour = 18
+
+        # все слоты (каждые 30 мин)
+        slots = []
+        current = datetime.strptime(f"{date_str} {start_hour}:00", "%Y-%m-%d %H:%M")
+
+        while current < datetime.strptime(f"{date_str} {end_hour}:00", "%Y-%m-%d %H:%M"):
+            slots.append(current)
+            current += timedelta(minutes=30)
+
+        # занятые
+        busy = []
+
+        for r in records:
+            try:
+                if int(r.get("therapist_id", 0)) != therapist_id:
+                    continue
+
+                dt = r.get("datetime")
+                if not dt or date_str not in dt:
+                    continue
+
+                busy_time = datetime.strptime(dt, "%Y-%m-%d %H:%M")
+                busy.append(busy_time)
+
+            except:
+                continue
+
+        free = []
+
+        for slot in slots:
+            is_busy = False
+
+            for b in busy:
+                if abs((slot - b).total_seconds()) < duration_min * 60:
+                    is_busy = True
+                    break
+
+            if not is_busy:
+                free.append(slot.strftime("%H:%M"))
+
+        return free
+
+    except Exception as e:
+        notify_error(e)
+        return []
