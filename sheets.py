@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME, BOT_TOKEN
 
 # 👇 ВСТАВЬ СВОЙ ID
-OPERATOR_ID = 502438855
+OPERATOR_ID = 177536138
 
 # =====================================================
 # 🔥 ERROR REPORT
