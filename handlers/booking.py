@@ -1,5 +1,4 @@
-﻿from aiogram import Router, F
-from sheets import notify_error
+from aiogram import Router, F
 from aiogram.types import (
     Message, CallbackQuery,
     InlineKeyboardMarkup, InlineKeyboardButton,
@@ -18,10 +17,12 @@ from sheets import (
     get_massage_name,
     get_therapist_name,
     get_spreadsheet,
+    notify_error
 )
 from handlers.start import main_menu
 
 router = Router()
+
 
 # =====================================================
 # TEXTS
@@ -65,6 +66,7 @@ TEXTS = {
     },
 }
 
+
 # =====================================================
 # STATES
 # =====================================================
@@ -86,7 +88,7 @@ class BookingState(StatesGroup):
 
 def operator_keyboard(row: int):
     return InlineKeyboardMarkup(
-        inline_keyboard=[[
+        inline_keyboard=[[ 
             InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_{row}"),
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row}")
         ]]
@@ -254,19 +256,19 @@ async def child_age(message: Message, state: FSMContext):
         await message.answer("❌ Введите возраст числом")
         return
 
-    age = int(message.text)
-    await state.update_data(child_age=age)
+    await state.update_data(child_age=int(message.text))
     await state.set_state(BookingState.phone)
 
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📲 Отправить номер", request_contact=True)]],
         resize_keyboard=True
     )
+
     await message.answer(TEXTS["phone"][lang], reply_markup=kb)
 
 
 # =====================================================
-# PHONE / SAVE
+# PHONE / SAVE (ГЛАВНЫЙ ФИКС)
 # =====================================================
 
 @router.message(BookingState.phone, F.contact)
@@ -278,7 +280,6 @@ async def phone(message: Message, state: FSMContext):
 
         print("🔥 ДОШЛИ ДО СОХРАНЕНИЯ")
 
-        # ✅ сохраняем
         create_appointment(
             user_id=message.from_user.id,
             massage_id=data["massage_id"],
@@ -290,9 +291,8 @@ async def phone(message: Message, state: FSMContext):
             phone=phone,
         )
 
-        # ✅ ПРАВИЛЬНО получаем последнюю строку
         ws = get_spreadsheet().worksheet("appointments")
-        row = len(ws.col_values(1))  # 🔥 ВОТ ФИКС
+        row = len(ws.col_values(1))  # ✅ правильная строка
 
         massage_name = get_massage_name(data["massage_id"], lang)
         therapist_name = get_therapist_name(data["therapist_id"])
@@ -306,27 +306,17 @@ async def phone(message: Message, state: FSMContext):
             f"📞 Телефон: {phone}"
         )
 
-        # ✅ отправка операторам
         admins_ws = get_spreadsheet().worksheet("admins")
-        sent = False
 
         for r in admins_ws.get_all_records():
             if r.get("role") == "operator":
-                try:
-                    await message.bot.send_message(
-                        int(r["user_id"]),
-                        operator_text,
-                        parse_mode="HTML",
-                        reply_markup=operator_keyboard(row)
-                    )
-                    sent = True
-                except Exception as e:
-                    notify_error(e)
+                await message.bot.send_message(
+                    int(r["user_id"]),
+                    operator_text,
+                    parse_mode="HTML",
+                    reply_markup=operator_keyboard(row)
+                )
 
-        if not sent:
-            print("❌ ОПЕРАТОР НЕ НАЙДЕН")
-
-        # ✅ ответ пользователю
         await message.answer(
             TEXT_AFTER_BOOKING.get(lang, TEXT_AFTER_BOOKING["ru"]),
             parse_mode="HTML",
@@ -336,8 +326,6 @@ async def phone(message: Message, state: FSMContext):
         await state.clear()
 
     except Exception as e:
-        print("💥 ОШИБКА В BOOKING:", e)
+        print("💥 ОШИБКА:", e)
         notify_error(e)
         await message.answer("❌ Ошибка при записи")
-
-    await state.clear()
