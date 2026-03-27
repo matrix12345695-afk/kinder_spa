@@ -260,7 +260,7 @@ async def child_age(message: Message, state: FSMContext):
 
 
 # =========================================
-# FINAL
+# FINAL (ИСПРАВЛЕНО 🔥)
 # =========================================
 
 @router.message(BookingState.phone, F.contact)
@@ -282,36 +282,37 @@ async def phone(message: Message, state: FSMContext):
         ws = get_spreadsheet().worksheet("appointments")
         row = len(ws.col_values(1))
 
+        massage_name = get_massage_name(data.get("massage_id"))
+        therapist_name = get_therapist_name(data.get("therapist_id"))
+
+        text = (
+            "📥 <b>Новая заявка</b>\n\n"
+
+            f"🧾 <b>Услуга:</b> {massage_name}\n"
+            f"👨‍⚕️ <b>Специалист:</b> {therapist_name}\n\n"
+
+            f"📅 <b>Дата:</b> {data.get('date')}\n"
+            f"⏰ <b>Время:</b> {data.get('time')}\n\n"
+
+            f"👩 <b>Родитель:</b> {data.get('parent_name')}\n"
+            f"👶 <b>Ребёнок:</b> {data.get('child_name')}\n"
+            f"📊 <b>Возраст:</b> {data.get('child_age')} мес\n\n"
+
+            f"📞 <b>Телефон:</b> {message.contact.phone_number}\n"
+            f"🆔 <b>User ID:</b> {message.from_user.id}"
+        )
+
         admins = get_spreadsheet().worksheet("admins").get_all_records()
 
         for a in admins:
             if a.get("role") == "operator":
                 try:
-                    text = f"""
-📥 <b>Новая заявка!</b>
-
-👤 <b>Родитель:</b> {data.get("parent_name")}
-🧒 <b>Ребёнок:</b> {data.get("child_name")}
-🎂 <b>Возраст:</b> {data.get("child_age")} мес
-
-📅 <b>Дата:</b> {data.get("date")}
-⏰ <b>Время:</b> {data.get("time")}
-
-👨‍⚕️ <b>Терапевт ID:</b> {data.get("therapist_id")}
-💆 <b>Услуга ID:</b> {data.get("massage_id")}
-
-📞 <b>Телефон:</b> {message.contact.phone_number}
-
-🆔 <b>User ID:</b> {message.from_user.id}
-"""
-
                     await message.bot.send_message(
                         int(a.get("user_id")),
                         text,
                         parse_mode="HTML",
                         reply_markup=operator_keyboard(row)
                     )
-
                 except Exception as e:
                     notify_error(e)
 
