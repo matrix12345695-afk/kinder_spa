@@ -166,9 +166,17 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     try:
         data = await state.get_data()
 
+        # 💡 ПАРСИМ ISO ДАТУ
+        selected_date = cb.data  # уже ISO: YYYY-MM-DD
+
+        # 💡 ПРОВЕРКА
+        if not selected_date or "-" not in selected_date:
+            await cb.message.answer("❌ Ошибка даты")
+            return
+
         times = get_free_times(
             therapist_id=data.get("therapist_id"),
-            date_str=cb.data,
+            date_str=selected_date,  # ОСТАВЛЯЕМ ISO!
             duration_min=data.get("massage_duration", 30),
         )
 
@@ -177,12 +185,12 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
             return
 
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[[
+            inline_keyboard=[[ 
                 InlineKeyboardButton(text=t, callback_data=f"time_{t}")
             ] for t in times]
         )
 
-        await state.update_data(date=cb.data)
+        await state.update_data(date=selected_date)
         await state.set_state(BookingState.time)
 
         await cb.message.answer("⏰ Выберите время:", reply_markup=kb)
@@ -191,7 +199,6 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     except Exception as e:
         notify_error(e)
         await cb.message.answer("❌ Ошибка")
-
 
 # =========================================
 # TIME
