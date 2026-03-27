@@ -31,26 +31,30 @@ async def notify_error(e: Exception):
         f"<pre>{traceback.format_exc()}</pre>"
     )
 
+    if len(text) > 4000:
+        text = text[:4000]
+
     try:
         await BOT.send_message(OPERATOR_ID, text, parse_mode="HTML")
-    except:
-        pass
+    except Exception as send_err:
+        logging.error(f"Error sending error message: {send_err}")
 
 
 # =========================================
-# KEEP ALIVE (ANTI-SLEEP)
+# KEEP ALIVE (FIXED 🔥)
 # =========================================
 
 async def keep_alive():
-    url = WEBHOOK_URL
+    base_url = WEBHOOK_URL.replace("/webhook", "")
+    url = f"{base_url}/health"
 
     while True:
         try:
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=10) as client:
                 await client.get(url)
-                print("🔄 Ping sent")
+                logging.info("🔄 Keep-alive ping sent")
         except Exception as e:
-            print(f"Ping error: {e}")
+            logging.error(f"KeepAlive error: {e}")
 
         await asyncio.sleep(600)
 
@@ -83,9 +87,18 @@ async def webhook(request: Request):
         return {"ok": False}
 
 
+# =========================================
+# HEALTH CHECK (ВАЖНО)
+# =========================================
+
 @app.get("/")
 async def root():
     return {"status": "alive"}
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 # =========================================
@@ -94,18 +107,26 @@ async def root():
 
 @app.on_event("startup")
 async def on_startup():
-    print("🚀 STARTING BOT")
+    logging.info("🚀 STARTING BOT")
 
     try:
         await BOT.delete_webhook(drop_pending_updates=True)
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
-
-        asyncio.create_task(keep_alive())
-
+        logging.info("✅ Webhook set")
     except Exception as e:
         await notify_error(e)
+
+    # 🔥 запускаем keep_alive
+    try:
+        asyncio.create_task(keep_alive())
+    except Exception as e:
+        logging.error(f"KeepAlive start error: {e}")
 
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    await BOT.delete_webhook()
+    try:
+        await BOT.delete_webhook()
+        logging.info("🛑 Bot stopped")
+    except Exception as e:
+        logging.error(f"Shutdown error: {e}")
