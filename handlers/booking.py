@@ -23,12 +23,16 @@ class BookingState(StatesGroup):
 
 def operator_keyboard(row: int):
     return InlineKeyboardMarkup(
-        inline_keyboard=[[ 
+        inline_keyboard=[[
             InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_{row}"),
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row}")
         ]]
     )
 
+
+# =========================================
+# START BOOKING
+# =========================================
 
 @router.message(F.text.in_(["😺 Записаться", "😺 Yozilish"]))
 async def start_booking(message: Message, state: FSMContext):
@@ -36,15 +40,28 @@ async def start_booking(message: Message, state: FSMContext):
     lang = get_user_lang(message.from_user.id) or "ru"
 
     for m in get_active_masses(lang):
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(
-                text="Выбрать",
-                callback_data=f"massage_{m['id']}"
-            )]]
+        text = (
+            f"💆‍♂️ {m['name_ru']}\n"
+            f"👶 {m['age_from']}-{m['age_to']} лет\n"
+            f"⏱ {m['duration_min']} мин\n"
+            f"💰 {m['price']} сум"
         )
 
-        await message.answer(m["name"], reply_markup=kb)
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Выбрать",
+                    callback_data=f"massage_{m['id']}"
+                )
+            ]]
+        )
 
+        await message.answer(text, reply_markup=kb)
+
+
+# =========================================
+# MASSAGE
+# =========================================
 
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
@@ -54,23 +71,31 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         if m["id"] == massage_id:
             await state.update_data(
                 massage_id=massage_id,
-                massage_duration=m["duration"]
+                massage_duration=m["duration_min"]
             )
 
     await state.set_state(BookingState.therapist)
 
     for t in get_therapists_for_massage(massage_id):
+        text = f"👩‍⚕️ {t['name']}\n🧠 Опыт: {t.get('experience', 'нет данных')}"
+
         kb = InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(
-                text="Выбрать",
-                callback_data=f"therapist_{t['id']}"
-            )]]
+            inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="Выбрать",
+                    callback_data=f"therapist_{t['id']}"
+                )
+            ]]
         )
 
-        await cb.message.answer(t["name"], reply_markup=kb)
+        await cb.message.answer(text, reply_markup=kb)
 
     await cb.answer()
 
+
+# =========================================
+# THERAPIST
+# =========================================
 
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
@@ -82,15 +107,21 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     today = date.today()
 
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(
-            text=(today + timedelta(days=i)).strftime("%d.%m"),
-            callback_data=(today + timedelta(days=i)).isoformat()
-        )] for i in range(7)]
+        inline_keyboard=[[
+            InlineKeyboardButton(
+                text=(today + timedelta(days=i)).strftime("%d.%m"),
+                callback_data=(today + timedelta(days=i)).isoformat()
+            )
+        ] for i in range(7)]
     )
 
-    await cb.message.answer("Выберите дату:", reply_markup=kb)
+    await cb.message.answer("📅 Выберите дату:", reply_markup=kb)
     await cb.answer()
 
+
+# =========================================
+# DATE
+# =========================================
 
 @router.callback_query(BookingState.date)
 async def choose_date(cb: CallbackQuery, state: FSMContext):
@@ -103,37 +134,47 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     )
 
     kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(
-            text=t, callback_data=f"time_{t}"
-        )] for t in times]
+        inline_keyboard=[[
+            InlineKeyboardButton(text=t, callback_data=f"time_{t}")
+        ] for t in times]
     )
 
     await state.update_data(date=cb.data)
     await state.set_state(BookingState.time)
-    await cb.message.answer("Выберите время:", reply_markup=kb)
+
+    await cb.message.answer("⏰ Выберите время:", reply_markup=kb)
     await cb.answer()
 
+
+# =========================================
+# TIME
+# =========================================
 
 @router.callback_query(BookingState.time)
 async def choose_time(cb: CallbackQuery, state: FSMContext):
     await state.update_data(time=cb.data.replace("time_", ""))
     await state.set_state(BookingState.parent)
-    await cb.message.answer("Введите имя родителя")
+
+    await cb.message.answer("👨‍👩‍👧 Введите имя родителя")
     await cb.answer()
 
+
+# =========================================
+# FORM
+# =========================================
 
 @router.message(BookingState.parent)
 async def parent_name(message: Message, state: FSMContext):
     await state.update_data(parent_name=message.text)
     await state.set_state(BookingState.child)
-    await message.answer("Имя ребенка")
+    await message.answer("👶 Имя ребенка")
 
 
 @router.message(BookingState.child)
 async def child_name(message: Message, state: FSMContext):
     await state.update_data(child_name=message.text)
     await state.set_state(BookingState.child_age)
-    await message.answer("Возраст в месяцах")
+    await message.answer("📊 Возраст в месяцах")
 
 
 @router.message(BookingState.child_age)
@@ -146,10 +187,12 @@ async def child_age(message: Message, state: FSMContext):
         resize_keyboard=True
     )
 
-    await message.answer("Отправьте номер", reply_markup=kb)
+    await message.answer("📱 Отправьте номер", reply_markup=kb)
 
 
-# ===== ГЛАВНЫЙ БЛОК =====
+# =========================================
+# FINAL
+# =========================================
 
 @router.message(BookingState.phone, F.contact)
 async def phone(message: Message, state: FSMContext):
@@ -176,17 +219,22 @@ async def phone(message: Message, state: FSMContext):
             if a["role"] == "operator":
                 await message.bot.send_message(
                     int(a["user_id"]),
-                    "Новая заявка",
+                    "📥 Новая заявка!",
                     reply_markup=operator_keyboard(row)
                 )
 
-        await message.answer("Заявка отправлена")
-
         await state.clear()
+
+        lang = get_user_lang(message.from_user.id) or "ru"
+
+        await message.answer(
+            "✅ Заявка отправлена!",
+            reply_markup=main_menu(lang)
+        )
 
     except Exception as e:
         notify_error(e)
-        await message.answer("Ошибка")
+        await message.answer("❌ Ошибка")
 
 
 @router.message(BookingState.phone)
