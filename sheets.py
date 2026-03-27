@@ -11,6 +11,8 @@ from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME, BOT_TOKEN
 
 OPERATOR_ID = 8752273443
 
+_spreadsheet = None
+
 
 # =====================================================
 # ERROR REPORT
@@ -20,6 +22,10 @@ async def notify_error_async(text):
     try:
         from aiogram import Bot
         bot = Bot(token=BOT_TOKEN)
+
+        if len(text) > 4000:
+            text = text[:4000]
+
         await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
     except:
         pass
@@ -34,8 +40,7 @@ def notify_error(e: Exception):
     )
 
     try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(notify_error_async(error_text))
+        asyncio.create_task(notify_error_async(error_text))
     except:
         pass
 
@@ -73,12 +78,18 @@ def get_client():
 
 
 def get_spreadsheet():
+    global _spreadsheet
+
+    if _spreadsheet:
+        return _spreadsheet
+
     try:
         client = get_client()
         if not client:
             return None
 
-        return client.open_by_key(SPREADSHEET_NAME)
+        _spreadsheet = client.open_by_key(SPREADSHEET_NAME)
+        return _spreadsheet
 
     except Exception as e:
         notify_error(e)
@@ -313,7 +324,7 @@ def create_appointment(
     try:
         ss = get_spreadsheet()
         if not ss:
-            return
+            return None
 
         ws = ss.worksheet("appointments")
 
@@ -329,8 +340,11 @@ def create_appointment(
             "pending"
         ])
 
+        return True
+
     except Exception as e:
         notify_error(e)
+        return None
 
 
 def update_appointment_status(row: int, new_status: str):
@@ -377,7 +391,7 @@ def get_all_appointments_full(user_id: int, lang: str = "ru"):
 
 
 # =====================================================
-# FREE TIMES (ИСПРАВЛЕНО!)
+# FREE TIMES
 # =====================================================
 
 def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
@@ -404,6 +418,9 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
         for r in records:
             try:
                 if int(r.get("therapist_id", 0)) != therapist_id:
+                    continue
+
+                if r.get("status") == "cancelled":
                     continue
 
                 dt = r.get("datetime")
