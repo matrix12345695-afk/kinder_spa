@@ -38,6 +38,24 @@ async def notify_error(e: Exception):
 
 
 # =========================================
+# KEEP ALIVE (ANTI-SLEEP)
+# =========================================
+
+async def keep_alive():
+    url = WEBHOOK_URL
+
+    while True:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.get(url)
+                print("🔄 Ping sent")
+        except Exception as e:
+            print(f"Ping error: {e}")
+
+        await asyncio.sleep(600)  # 10 минут
+
+
+# =========================================
 # ROUTERS
 # =========================================
 
@@ -81,6 +99,10 @@ async def on_startup():
     try:
         await BOT.delete_webhook(drop_pending_updates=True)
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
+
+        # 🔥 запускаем keep_alive
+        asyncio.create_task(keep_alive())
+
     except Exception as e:
         await notify_error(e)
 
