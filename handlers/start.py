@@ -5,7 +5,7 @@ from aiogram.types import (
     KeyboardButton
 )
 
-from services.sheets import get_user_lang, set_user_lang
+from sheets import get_user_lang, set_user_lang
 
 router = Router()
 
