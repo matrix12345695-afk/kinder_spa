@@ -163,7 +163,7 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# DATE (ИСПРАВЛЕНО)
+# DATE
 # =========================================
 
 @router.callback_query(BookingState.date)
@@ -171,7 +171,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     try:
         data = await state.get_data()
 
-        selected_date = cb.data  # ISO формат
+        selected_date = cb.data
 
         if not selected_date or "-" not in selected_date:
             await cb.message.answer("❌ Ошибка даты")
@@ -287,11 +287,31 @@ async def phone(message: Message, state: FSMContext):
         for a in admins:
             if a.get("role") == "operator":
                 try:
+                    text = f"""
+📥 <b>Новая заявка!</b>
+
+👤 <b>Родитель:</b> {data.get("parent_name")}
+🧒 <b>Ребёнок:</b> {data.get("child_name")}
+🎂 <b>Возраст:</b> {data.get("child_age")} мес
+
+📅 <b>Дата:</b> {data.get("date")}
+⏰ <b>Время:</b> {data.get("time")}
+
+👨‍⚕️ <b>Терапевт ID:</b> {data.get("therapist_id")}
+💆 <b>Услуга ID:</b> {data.get("massage_id")}
+
+📞 <b>Телефон:</b> {message.contact.phone_number}
+
+🆔 <b>User ID:</b> {message.from_user.id}
+"""
+
                     await message.bot.send_message(
                         int(a.get("user_id")),
-                        "📥 Новая заявка!",
+                        text,
+                        parse_mode="HTML",
                         reply_markup=operator_keyboard(row)
                     )
+
                 except Exception as e:
                     notify_error(e)
 
