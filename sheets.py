@@ -7,7 +7,7 @@ from google.oauth2.service_account import Credentials
 from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME
 
 # =====================================================
-# AUTH (через ENV, а не файл)
+# AUTH
 # =====================================================
 
 SCOPE = [
@@ -22,7 +22,6 @@ def get_client():
 
     creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
-    # 🔥 фикс переносов строки
     if "private_key" in creds_dict:
         creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
@@ -119,17 +118,20 @@ def get_active_masses(lang: str = "ru"):
 
     result = []
     for r in rows:
-        if str(r.get("active", "")).upper() != "TRUE":
-            continue
+        try:
+            if str(r.get("active", "")).upper() != "TRUE":
+                continue
 
-        result.append({
-            "id": int(r.get("id", 0)),
-            "name": r.get("name_ru") if lang == "ru" else r.get("name_uz"),
-            "price": r.get("price") or r.get("cost") or r.get("цена") or 0,
-            "duration": int(r.get("duration_min", 0)),
-            "age_from": int(r.get("age_from", 0)),
-            "age_to": int(r.get("age_to", 0)),
-        })
+            result.append({
+                "id": int(r.get("id", 0)),
+                "name": r.get("name_ru") if lang == "ru" else r.get("name_uz"),
+                "price": r.get("price") or r.get("cost") or r.get("цена") or 0,
+                "duration": int(r.get("duration_min", 0)),
+                "age_from": int(r.get("age_from", 0)),
+                "age_to": int(r.get("age_to", 0)),
+            })
+        except:
+            continue
 
     return result
 
@@ -137,31 +139,45 @@ def get_active_masses(lang: str = "ru"):
 def get_massage_name(massage_id: int, lang: str = "ru") -> str:
     ws = get_spreadsheet().worksheet("masses")
     for r in ws.get_all_records():
-        if int(r.get("id", 0)) == massage_id:
-            return r.get("name_ru") if lang == "ru" else r.get("name_uz")
+        try:
+            if int(r.get("id", 0)) == massage_id:
+                return r.get("name_ru") if lang == "ru" else r.get("name_uz")
+        except:
+            continue
     return "—"
 
 
 # =====================================================
-# THERAPISTS
+# THERAPISTS (🔥 FIXED)
 # =====================================================
 
 def get_therapists_for_massage(massage_id: int):
     ss = get_spreadsheet()
 
-    therapists = {
-        int(t["id"]): t
-        for t in ss.worksheet("therapists").get_all_records()
-    }
+    therapists = {}
+    for t in ss.worksheet("therapists").get_all_records():
+        try:
+            if not t.get("id"):
+                continue
+            therapists[int(t["id"])] = t
+        except:
+            continue
 
     links = ss.worksheet("therapist_masses").get_all_records()
 
     result = []
+
     for l in links:
-        if int(l.get("massage_id", 0)) == massage_id:
-            t = therapists.get(int(l.get("therapist_id", 0)))
-            if t:
-                result.append(t)
+        try:
+            if not l.get("massage_id") or not l.get("therapist_id"):
+                continue
+
+            if int(l["massage_id"]) == massage_id:
+                t = therapists.get(int(l["therapist_id"]))
+                if t:
+                    result.append(t)
+        except:
+            continue
 
     return result
 
@@ -169,8 +185,11 @@ def get_therapists_for_massage(massage_id: int):
 def get_therapist_name(therapist_id: int) -> str:
     ws = get_spreadsheet().worksheet("therapists")
     for r in ws.get_all_records():
-        if int(r.get("id", 0)) == therapist_id:
-            return r.get("name", "—")
+        try:
+            if int(r.get("id", 0)) == therapist_id:
+                return r.get("name", "—")
+        except:
+            continue
     return "—"
 
 
@@ -214,15 +233,18 @@ def get_all_appointments_full(user_id: int, lang: str = "ru"):
 
     result = []
     for idx, r in enumerate(ws.get_all_records(), start=2):
-        if str(r.get("user_id")) == str(user_id):
-            result.append({
-                "row": idx,
-                "datetime": r.get("datetime"),
-                "massage": get_massage_name(int(r.get("massage_id", 0)), lang),
-                "therapist": get_therapist_name(int(r.get("therapist_id", 0))),
-                "child": r.get("child_name", ""),
-                "status": r.get("status", ""),
-            })
+        try:
+            if str(r.get("user_id")) == str(user_id):
+                result.append({
+                    "row": idx,
+                    "datetime": r.get("datetime"),
+                    "massage": get_massage_name(int(r.get("massage_id", 0)), lang),
+                    "therapist": get_therapist_name(int(r.get("therapist_id", 0))),
+                    "child": r.get("child_name", ""),
+                    "status": r.get("status", ""),
+                })
+        except:
+            continue
 
     return result
 
@@ -238,22 +260,22 @@ def get_appointments_for_reminder(hours_before: int = 24):
     result = []
 
     for r in ws.get_all_records():
-        if r.get("status") != "approved":
-            continue
-
         try:
+            if r.get("status") != "approved":
+                continue
+
             ap_dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
+
+            if target_from <= ap_dt <= target_to:
+                result.append({
+                    "user_id": r.get("user_id"),
+                    "datetime": r.get("datetime"),
+                    "massage_id": r.get("massage_id"),
+                    "therapist_id": r.get("therapist_id"),
+                    "child_name": r.get("child_name", ""),
+                })
         except:
             continue
-
-        if target_from <= ap_dt <= target_to:
-            result.append({
-                "user_id": r.get("user_id"),
-                "datetime": r.get("datetime"),
-                "massage_id": r.get("massage_id"),
-                "therapist_id": r.get("therapist_id"),
-                "child_name": r.get("child_name", ""),
-            })
 
     return result
 
@@ -281,10 +303,13 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
     work_from = work_to = None
 
     for r in schedule_ws.get_all_records():
-        if int(r.get("therapist_id", 0)) == therapist_id and r.get("weekday") == weekday:
-            work_from = datetime.strptime(r.get("time_from"), "%H:%M").time()
-            work_to = datetime.strptime(r.get("time_to"), "%H:%M").time()
-            break
+        try:
+            if int(r.get("therapist_id", 0)) == therapist_id and r.get("weekday") == weekday:
+                work_from = datetime.strptime(r.get("time_from"), "%H:%M").time()
+                work_to = datetime.strptime(r.get("time_to"), "%H:%M").time()
+                break
+        except:
+            continue
 
     if not work_from or not work_to:
         return []
@@ -294,13 +319,13 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
 
     busy = []
     for r in appointments_ws.get_all_records():
-        if int(r.get("therapist_id", 0)) == therapist_id and r.get("status") == "approved":
-            try:
+        try:
+            if int(r.get("therapist_id", 0)) == therapist_id and r.get("status") == "approved":
                 dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
                 if dt.date() == date_obj:
                     busy.append(dt)
-            except:
-                pass
+        except:
+            continue
 
     min_time = datetime.combine(date_obj, work_from)
 
