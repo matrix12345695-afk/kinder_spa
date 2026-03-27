@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import httpx
 
 from fastapi import FastAPI, Request
@@ -8,11 +7,13 @@ from aiogram import Bot, Dispatcher, types
 
 from config import BOT_TOKEN, WEBHOOK_URL
 from handlers import start, booking, contacts, my_appointments, operator_appointments, admin
-from scheduler import start_scheduler
+
+# ❌ УБРАЛИ scheduler (ломал запуск)
+# from scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
 
-# 💥 ПРОВЕРКА ENV (чтобы не падал молча)
+# 💥 Проверка ENV
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не задан")
 
@@ -43,13 +44,13 @@ async def webhook(request: Request):
     return {"ok": True}
 
 
-# 🔹 пинг endpoint
+# 🔹 проверка сервера
 @app.get("/")
 async def root():
     return {"status": "alive 🚀"}
 
 
-# 🔥 АНТИ-СОН
+# 🔥 анти-сон (Render любит усыплять)
 async def self_ping():
     while True:
         try:
@@ -67,10 +68,9 @@ async def on_startup():
     await bot.set_webhook(WEBHOOK_URL + "/webhook")
     print("✅ Webhook установлен:", WEBHOOK_URL)
 
-    # 🔔 напоминания
-    start_scheduler(bot)
+    # ❌ временно отключено (чтобы не падало)
+    # start_scheduler(bot)
 
-    # 💤 анти-сон
     asyncio.create_task(self_ping())
 
 
