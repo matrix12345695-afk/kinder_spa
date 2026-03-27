@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 import logging
 import os
 import httpx
@@ -11,6 +11,13 @@ from handlers import start, booking, contacts, my_appointments, operator_appoint
 from scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
+
+# 💥 ПРОВЕРКА ENV (чтобы не падал молча)
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN не задан")
+
+if not WEBHOOK_URL:
+    raise ValueError("❌ WEBHOOK_URL не задан")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -48,15 +55,17 @@ async def self_ping():
         try:
             async with httpx.AsyncClient() as client:
                 await client.get(WEBHOOK_URL)
-        except:
-            pass
+        except Exception as e:
+            print("Ping error:", e)
         await asyncio.sleep(300)
 
 
 @app.on_event("startup")
 async def on_startup():
+    print("🚀 STARTING BOT...")
+
     await bot.set_webhook(WEBHOOK_URL + "/webhook")
-    print("Webhook установлен:", WEBHOOK_URL)
+    print("✅ Webhook установлен:", WEBHOOK_URL)
 
     # 🔔 напоминания
     start_scheduler(bot)
@@ -67,4 +76,5 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    print("🛑 BOT STOPPED")
     await bot.delete_webhook()
