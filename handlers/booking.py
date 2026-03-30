@@ -33,8 +33,9 @@ async def run_blocking(func, *args):
 # =========================================
 # КАЛЕНДАРЬ
 # =========================================
-def get_calendar(year: int, month: int):
+def get_calendar(year: int, month: int, selected_day: int = None):
     kb = InlineKeyboardMarkup(row_width=7)
+    today = date.today()
 
     kb.row(
         InlineKeyboardButton(
@@ -53,25 +54,37 @@ def get_calendar(year: int, month: int):
         for day in week:
             if day == 0:
                 row.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
+                continue
+
+            current_date = date(year, month, day)
+            date_str = current_date.isoformat()
+
+            # ❌ прошлые даты
+            if current_date < today:
+                row.append(InlineKeyboardButton(text="❌", callback_data="ignore"))
+                continue
+
+            # 🔒 воскресенье
+            if current_date.weekday() == 6:
+                row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
+                continue
+
+            # 🔵 выбранный день
+            if selected_day == day:
+                row.append(
+                    InlineKeyboardButton(
+                        text=f"🔵 {day}",
+                        callback_data=f"date_{date_str}"
+                    )
+                )
             else:
-                date_str = f"{year}-{month:02d}-{day:02d}"
-
-                weekday = datetime(year, month, day).weekday()
-
-                if weekday == 6:
-                    row.append(
-                        InlineKeyboardButton(
-                            text=f"{day} 🔒",
-                            callback_data="ignore"
-                        )
+                row.append(
+                    InlineKeyboardButton(
+                        text=str(day),
+                        callback_data=f"date_{date_str}"
                     )
-                else:
-                    row.append(
-                        InlineKeyboardButton(
-                            text=str(day),
-                            callback_data=f"date_{date_str}"
-                        )
-                    )
+                )
+
         kb.row(*row)
 
     kb.row(
@@ -149,7 +162,7 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# THERAPIST
+# THERAPIST → КАЛЕНДАРЬ
 # =========================================
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
@@ -169,7 +182,7 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# ПЕРЕЛИСТЫВАНИЕ КАЛЕНДАРЯ
+# ПЕРЕЛИСТЫВАНИЕ
 # =========================================
 @router.callback_query(F.data.startswith("prev_"))
 async def prev_month(cb: CallbackQuery):
@@ -207,13 +220,18 @@ async def ignore(cb: CallbackQuery):
 
 
 # =========================================
-# DATE (ОБНОВЛЕНО ПОД КАЛЕНДАРЬ)
+# DATE → ВРЕМЯ
 # =========================================
 @router.callback_query(BookingState.date, F.data.startswith("date_"))
 async def choose_date(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
     selected_date = cb.data.replace("date_", "")
+    dt = datetime.fromisoformat(selected_date)
+
+    await cb.message.edit_reply_markup(
+        reply_markup=get_calendar(dt.year, dt.month, dt.day)
+    )
 
     data = await state.get_data()
 
@@ -228,10 +246,18 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
         await cb.message.answer("❌ Нет свободного времени")
         return
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=t, callback_data=f"time_{t}")]
-                         for t in times]
-    )
+    # плитка времени
+    buttons = []
+    row = []
+    for i, t in enumerate(times, 1):
+        row.append(InlineKeyboardButton(text=t, callback_data=f"time_{t}"))
+        if i % 3 == 0:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
 
     await state.update_data(date=selected_date)
     await state.set_state(BookingState.time)
