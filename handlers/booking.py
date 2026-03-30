@@ -11,24 +11,20 @@ from sheets import (
     get_therapists_for_massage,
     get_free_times,
     create_appointment,
-    get_spreadsheet,
     get_massage_name,
     get_therapist_name,
     notify_error,
-    safe_call
 )
-
-from handlers.start import main_menu
 
 router = Router()
 
 
 # =========================================
-# 🔥 АНТИЛАГ (ГЛАВНОЕ)
+# АНТИЛАГ
 # =========================================
-async def run_blocking(func, *args, **kwargs):
+async def run_blocking(func, *args):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: func(*args, **kwargs))
+    return await loop.run_in_executor(None, lambda: func(*args))
 
 
 # =========================================
@@ -46,17 +42,8 @@ class BookingState(StatesGroup):
 
 
 # =========================================
-# UI
+# PARSE AGE
 # =========================================
-def operator_keyboard(row: int):
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_{row}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row}")
-        ]]
-    )
-
-
 def parse_age(text: str) -> int:
     text = text.lower().replace(" ", "").replace(",", ".")
 
@@ -70,42 +57,7 @@ def parse_age(text: str) -> int:
 
 
 # =========================================
-# START BOOKING
-# =========================================
-@router.message(
-    (F.text.lower().contains("запис")) |
-    (F.text.lower().contains("yozil"))
-)
-async def start_booking(message: Message, state: FSMContext):
-    await state.clear()
-
-    lang = await run_blocking(get_user_lang, message.from_user.id) or "ru"
-    massages = await run_blocking(get_active_masses, lang)
-
-    if not massages:
-        await message.answer("❌ Нет доступных услуг")
-        return
-
-    for m in massages:
-        text = (
-            f"💆‍♂️ {m.get('name')}\n"
-            f"👶 {m.get('age_from')} - {m.get('age_to')}\n"
-            f"⏱ {m.get('duration')} мин\n"
-            f"💰 {m.get('price')} сум"
-        )
-
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="Выбрать",
-                callback_data=f"massage_{m.get('id')}"
-            )
-        ]])
-
-        await message.answer(text, reply_markup=kb)
-
-
-# =========================================
-# MASSAGE
+# MASSAGE SELECT
 # =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
@@ -283,6 +235,7 @@ async def phone(message: Message, state: FSMContext):
 
         lang = await run_blocking(get_user_lang, message.from_user.id) or "ru"
 
+        from handlers.start import main_menu
         await message.answer("✅ Заявка отправлена", reply_markup=main_menu(lang))
 
     except Exception as e:
@@ -291,44 +244,8 @@ async def phone(message: Message, state: FSMContext):
 
 
 # =========================================
-# FALLBACK
-# =========================================
-# ВАЖНО: только показываю исправленную часть, остальное у тебя норм
-
-# =========================================
-# FALLBACK
+# FALLBACK PHONE
 # =========================================
 @router.message(BookingState.phone)
 async def fallback(message: Message):
     await message.answer("Нажмите кнопку отправки номера")
-
-
-# =========================================
-# 🔥 ГЛОБАЛЬНЫЙ ЛОВЕЦ ЗАПИСИ (ФИКС)
-# =========================================
-@router.message()
-async def force_booking_fix(message: Message, state: FSMContext):
-    text = (message.text or "").lower()
-
-    if "запис" in text or "yozil" in text:
-        await state.clear()
-
-        lang = await run_blocking(get_user_lang, message.from_user.id) or "ru"
-        massages = await run_blocking(get_active_masses, lang)
-
-        if not massages:
-            await message.answer("❌ Нет услуг")
-            return
-
-        for m in massages:
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(
-                    text="Выбрать",
-                    callback_data=f"massage_{m.get('id')}"
-                )]]
-            )
-
-            await message.answer(
-                f"💆‍♂️ {m.get('name')}\n💰 {m.get('price')} сум",
-                reply_markup=kb
-            )
