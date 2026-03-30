@@ -203,18 +203,13 @@ def get_active_masses(lang: str = "ru"):
                 if str(r.get("active", "")).lower() != "true":
                     continue
 
-                if lang == "uz":
-                    name = r.get("name_uz") or r.get("name_ru")
-                else:
-                    name = r.get("name_ru") or r.get("name_uz")
+                name = r.get("name_ru") or r.get("name_uz")
 
                 result.append({
                     "id": int(r.get("id", 0)),
                     "name": name,
-                    "price": r.get("price") or r.get("cost") or r.get("цена") or 0,
-                    "duration": int(r.get("duration_min", 0)),
-                    "age_from": r.get("age_from", ""),
-                    "age_to": r.get("age_to", ""),
+                    "price": r.get("price", 0),
+                    "duration": int(r.get("duration_min", 30)),
                 })
             except:
                 continue
@@ -235,13 +230,8 @@ def get_massage_name(massage_id: int, lang: str = "ru") -> str:
         ws = ss.worksheet("masses")
 
         for r in ws.get_all_records():
-            try:
-                if int(r.get("id", 0)) == massage_id:
-                    if lang == "uz":
-                        return r.get("name_uz") or r.get("name_ru")
-                    return r.get("name_ru") or r.get("name_uz")
-            except:
-                continue
+            if int(r.get("id", 0)) == massage_id:
+                return r.get("name_ru") or r.get("name_uz")
 
         return "—"
 
@@ -262,21 +252,15 @@ def get_therapists_for_massage(massage_id: int):
 
         therapists = {}
         for t in ss.worksheet("therapists").get_all_records():
-            try:
-                therapists[int(t["id"])] = t
-            except:
-                continue
+            therapists[int(t["id"])] = t
 
         result = []
 
         for l in ss.worksheet("therapist_masses").get_all_records():
-            try:
-                if int(l.get("massage_id", 0)) == massage_id:
-                    t = therapists.get(int(l.get("therapist_id", 0)))
-                    if t:
-                        result.append(t)
-            except:
-                continue
+            if int(l.get("massage_id", 0)) == massage_id:
+                t = therapists.get(int(l.get("therapist_id", 0)))
+                if t:
+                    result.append(t)
 
         return result
 
@@ -294,11 +278,8 @@ def get_therapist_name(therapist_id: int) -> str:
         ws = ss.worksheet("therapists")
 
         for r in ws.get_all_records():
-            try:
-                if int(r.get("id", 0)) == therapist_id:
-                    return r.get("name", "—")
-            except:
-                continue
+            if int(r.get("id", 0)) == therapist_id:
+                return r.get("name", "—")
 
         return "—"
 
@@ -347,51 +328,8 @@ def create_appointment(
         return None
 
 
-def update_appointment_status(row: int, new_status: str):
-    try:
-        ss = get_spreadsheet()
-        if not ss:
-            return
-
-        ws = ss.worksheet("appointments")
-        ws.update_cell(row, 9, new_status)
-
-    except Exception as e:
-        notify_error(e)
-
-
-def get_all_appointments_full(user_id: int, lang: str = "ru"):
-    try:
-        ss = get_spreadsheet()
-        if not ss:
-            return []
-
-        ws = ss.worksheet("appointments")
-
-        result = []
-        for idx, r in enumerate(ws.get_all_records(), start=2):
-            try:
-                if str(r.get("user_id")) == str(user_id):
-                    result.append({
-                        "row": idx,
-                        "datetime": r.get("datetime"),
-                        "massage": get_massage_name(int(r.get("massage_id", 0)), lang),
-                        "therapist": get_therapist_name(int(r.get("therapist_id", 0))),
-                        "child": r.get("child_name", ""),
-                        "status": r.get("status", ""),
-                    })
-            except:
-                continue
-
-        return result
-
-    except Exception as e:
-        notify_error(e)
-        return []
-
-
 # =====================================================
-# FREE TIMES
+# 🔥 FIXED FREE TIMES (С УЧЁТОМ SCHEDULE)
 # =====================================================
 
 def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
@@ -400,39 +338,59 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
         if not ss:
             return []
 
-        ws = ss.worksheet("appointments")
-        records = ws.get_all_records()
+        target_date = datetime.strptime(date_str, "%Y-%m-%d")
+        weekday_map = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+        weekday = weekday_map[target_date.weekday()]
 
-        start_hour = 9
-        end_hour = 18
+        # 📅 график
+        schedule_ws = ss.worksheet("schedule")
+
+        start_time = None
+        end_time = None
+
+        for r in schedule_ws.get_all_records():
+            if int(r.get("therapist_id", 0)) != therapist_id:
+                continue
+
+            if str(r.get("weekday")).strip() != weekday:
+                continue
+
+            start_time = r.get("time_from")
+            end_time = r.get("time_to")
+            break
+
+        if not start_time or not end_time:
+            return []
+
+        # ⏰ слоты
+        current = datetime.strptime(f"{date_str} {start_time}", "%Y-%m-%d %H:%M")
+        end_dt = datetime.strptime(f"{date_str} {end_time}", "%Y-%m-%d %H:%M")
 
         slots = []
-        current = datetime.strptime(f"{date_str} {start_hour}:00", "%Y-%m-%d %H:%M")
-
-        while current < datetime.strptime(f"{date_str} {end_hour}:00", "%Y-%m-%d %H:%M"):
+        while current < end_dt:
             slots.append(current)
             current += timedelta(minutes=30)
+
+        # 📕 занятые
+        ws = ss.worksheet("appointments")
+        records = ws.get_all_records()
 
         busy = []
 
         for r in records:
-            try:
-                if int(r.get("therapist_id", 0)) != therapist_id:
-                    continue
-
-                if r.get("status") == "cancelled":
-                    continue
-
-                dt = r.get("datetime")
-                if not dt or date_str not in dt:
-                    continue
-
-                busy_time = datetime.strptime(dt, "%Y-%m-%d %H:%M")
-                busy.append(busy_time)
-
-            except:
+            if int(r.get("therapist_id", 0)) != therapist_id:
                 continue
 
+            if r.get("status") == "cancelled":
+                continue
+
+            dt = r.get("datetime")
+            if not dt or date_str not in dt:
+                continue
+
+            busy.append(datetime.strptime(dt, "%Y-%m-%d %H:%M"))
+
+        # 🧠 фильтр
         free = []
 
         for slot in slots:
@@ -451,15 +409,3 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
     except Exception as e:
         notify_error(e)
         return []
-
-
-# =====================================================
-# SAFE CALL (🔥 ИСПРАВЛЕНО ПРАВИЛЬНО)
-# =====================================================
-
-def safe_call(func, *args, default=None, **kwargs):
-    try:
-        return func(*args, **kwargs)
-    except Exception as e:
-        notify_error(e)
-        return default
