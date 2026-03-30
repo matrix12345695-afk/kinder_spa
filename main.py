@@ -79,12 +79,6 @@ async def ensure_webhook(force=False):
         await notify_error(e)
 
 
-async def webhook_watcher():
-    while True:
-        await ensure_webhook()
-        await asyncio.sleep(60)
-
-
 # =========================================
 # ROUTERS
 # =========================================
@@ -139,12 +133,18 @@ async def on_startup():
     logging.info("🚀 STARTING KINDER SPA BOT")
 
     try:
-        # 💣 ЖЁСТКО СТАВИМ webhook при старте
+        # ⏳ ДАЁМ СЕРВЕРУ ПОДНЯТЬСЯ (ВАЖНО!)
+        await asyncio.sleep(5)
+
+        # ✅ СТАВИМ WEBHOOK ОДИН РАЗ
         await ensure_webhook(force=True)
+
     except Exception as e:
         await notify_error(e)
 
-    asyncio.create_task(webhook_watcher())
+    # ❌ УДАЛИЛИ webhook_watcher (он ломал бота)
+
+    # ✅ ОСТАВИЛИ ТОЛЬКО ПИНГ
     asyncio.create_task(self_ping())
 
 
