@@ -128,8 +128,12 @@ async def force_language_choice(message: Message):
 
     text = (message.text or "").lower()
 
-    # ❗ НЕ БЛОКИРУЕМ кнопку "Записаться"
-    if "запис" in text or "yozil" in text:
+    # ❗ ПРОПУСКАЕМ ВСЕ КНОПКИ ОСНОВНОГО МЕНЮ
+    if any(word in text for word in [
+        "запис", "yozil",
+        "контакт", "kontakt",
+        "мои", "mening"
+    ]):
         return
 
     if not lang:
