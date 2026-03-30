@@ -409,3 +409,35 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
     except Exception as e:
         notify_error(e)
         return []
+        # =====================================================
+# 📋 ВСЕ ЗАПИСИ ПОЛЬЗОВАТЕЛЯ (ВОЗВРАЩАЕМ НАЗАД)
+# =====================================================
+
+def get_all_appointments_full(user_id: int, lang: str = "ru"):
+    try:
+        ss = get_spreadsheet()
+        if not ss:
+            return []
+
+        ws = ss.worksheet("appointments")
+
+        result = []
+        for idx, r in enumerate(ws.get_all_records(), start=2):
+            try:
+                if str(r.get("user_id")) == str(user_id):
+                    result.append({
+                        "row": idx,
+                        "datetime": r.get("datetime"),
+                        "massage": get_massage_name(int(r.get("massage_id", 0)), lang),
+                        "therapist": get_therapist_name(int(r.get("therapist_id", 0))),
+                        "child": r.get("child_name", ""),
+                        "status": r.get("status", ""),
+                    })
+            except:
+                continue
+
+        return result
+
+    except Exception as e:
+        notify_error(e)
+        return []
