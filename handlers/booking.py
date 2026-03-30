@@ -14,7 +14,7 @@ from sheets import (
     get_massage_name,
     get_therapist_name,
     notify_error,
-    safe_call  # 🔥 добавили
+    safe_call
 )
 
 from handlers.start import main_menu
@@ -56,9 +56,17 @@ def parse_age(text: str) -> int:
     return int(float(text))
 
 
-@router.message(F.text.in_(["😺 Записаться", "😺 Yozilish"]))
+# =====================================================
+# 🔥 ИСПРАВЛЕННЫЙ СТАРТ ЗАПИСИ (ГЛАВНОЕ)
+# =====================================================
+
+@router.message(
+    (F.text.lower().contains("запис")) |
+    (F.text.lower().contains("yozil"))
+)
 async def start_booking(message: Message, state: FSMContext):
     await state.clear()
+
     lang = get_user_lang(message.from_user.id) or "ru"
 
     massages = get_active_masses(lang)
