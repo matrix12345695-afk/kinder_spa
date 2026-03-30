@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 
 from sheets import get_user_lang, set_user_lang
 
@@ -52,8 +53,10 @@ def main_menu(lang: str):
 # =====================================================
 
 @router.message(CommandStart())
-async def start(message: Message):
+async def start(message: Message, state: FSMContext):
     try:
+        await state.clear()  # 🔥 важно
+
         user_id = message.from_user.id
         lang = get_user_lang(user_id)
 
@@ -66,7 +69,7 @@ async def start(message: Message):
 
         await send_welcome(message, lang)
 
-    except Exception as e:
+    except Exception:
         await message.answer("⚠️ Ошибка при запуске. Попробуйте ещё раз.")
 
 
@@ -75,11 +78,13 @@ async def start(message: Message):
 # =====================================================
 
 @router.message(F.text.in_(["🇷🇺 Русский", "🇺🇿 O‘zbekcha"]))
-async def choose_language(message: Message):
+async def choose_language(message: Message, state: FSMContext):
     try:
-        user_id = message.from_user.id
+        await state.clear()
 
+        user_id = message.from_user.id
         lang = "uz" if "O‘zbek" in message.text else "ru"
+
         set_user_lang(user_id, lang)
 
         await send_welcome(message, lang)
@@ -89,18 +94,33 @@ async def choose_language(message: Message):
 
 
 # =====================================================
-# CHANGE LANGUAGE
+# CHANGE LANGUAGE (ТОЧНЫЙ ФИЛЬТР)
 # =====================================================
 
-@router.message(
-    (F.text.contains("Сменить язык")) |
-    (F.text.contains("Tilni"))
-)
-async def change_language(message: Message):
+@router.message(F.text.in_(["🌍 Сменить язык", "🌍 Tilni o‘zgartirish"]))
+async def change_language(message: Message, state: FSMContext):
+    await state.clear()
+
     await message.answer(
         "🌍 Выберите язык / Tilni tanlang:",
         reply_markup=language_keyboard()
     )
+
+
+# =====================================================
+# GLOBAL GUARD (🔥 КЛЮЧЕВОЕ)
+# =====================================================
+
+@router.message()
+async def force_language_choice(message: Message):
+    user_id = message.from_user.id
+    lang = get_user_lang(user_id)
+
+    if not lang:
+        await message.answer(
+            "🌍 Сначала выберите язык:",
+            reply_markup=language_keyboard()
+        )
 
 
 # =====================================================
