@@ -18,6 +18,8 @@ from sheets import (
 
 router = Router()
 
+OPERATOR_ID = 502438855  # ← ТВОЙ ID
+
 
 # =========================================
 # АНТИЛАГ
@@ -61,40 +63,36 @@ def parse_age(text: str) -> int:
 # =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
-    try:
-        await cb.answer()
+    await cb.answer()
 
-        massage_id = int(cb.data.split("_")[1])
+    massage_id = int(cb.data.split("_")[1])
 
-        lang = await run_blocking(get_user_lang, cb.from_user.id) or "ru"
-        masses = await run_blocking(get_active_masses, lang)
+    lang = await run_blocking(get_user_lang, cb.from_user.id) or "ru"
+    masses = await run_blocking(get_active_masses, lang)
 
-        for m in masses:
-            if m["id"] == massage_id:
-                await state.update_data(
-                    massage_id=massage_id,
-                    massage_duration=m.get("duration", 30)
-                )
-
-        therapists = await run_blocking(get_therapists_for_massage, massage_id)
-
-        await state.set_state(BookingState.therapist)
-
-        for t in therapists:
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(
-                    text="Выбрать",
-                    callback_data=f"therapist_{t.get('id')}"
-                )
-            ]])
-
-            await cb.message.answer(
-                f"👩‍⚕️ {t.get('name')}\n🧠 {t.get('experience')}",
-                reply_markup=kb
+    for m in masses:
+        if m["id"] == massage_id:
+            await state.update_data(
+                massage_id=massage_id,
+                massage_duration=m.get("duration", 30)
             )
 
-    except Exception as e:
-        notify_error(e)
+    therapists = await run_blocking(get_therapists_for_massage, massage_id)
+
+    await state.set_state(BookingState.therapist)
+
+    for t in therapists:
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="Выбрать",
+                callback_data=f"therapist_{t.get('id')}"
+            )
+        ]])
+
+        await cb.message.answer(
+            f"👩‍⚕️ {t.get('name')}\n🧠 {t.get('experience')}",
+            reply_markup=kb
+        )
 
 
 # =========================================
@@ -219,6 +217,7 @@ async def phone(message: Message, state: FSMContext):
     try:
         data = await state.get_data()
 
+        # 💾 СОХРАНЯЕМ
         await run_blocking(
             create_appointment,
             message.from_user.id,
@@ -231,21 +230,39 @@ async def phone(message: Message, state: FSMContext):
             message.contact.phone_number,
         )
 
+        # =========================================
+        # 🔥 УВЕДОМЛЕНИЕ ОПЕРАТОРУ (ФИКС)
+        # =========================================
+        try:
+            bot = message.bot
+
+            massage_name = await run_blocking(get_massage_name, data["massage_id"])
+            therapist_name = await run_blocking(get_therapist_name, data["therapist_id"])
+
+            text = (
+                "🆕 <b>Новая запись</b>\n\n"
+                f"💆 {massage_name}\n"
+                f"👩‍⚕️ {therapist_name}\n"
+                f"📅 {data['date']} {data['time']}\n"
+                f"👨 {data['parent_name']}\n"
+                f"👶 {data['child_name']}\n"
+                f"📊 {data['child_age']}\n"
+                f"📞 {message.contact.phone_number}\n"
+                f"🆔 {message.from_user.id}"
+            )
+
+            await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
+
+        except Exception as e:
+            notify_error(e)
+
         await state.clear()
 
         lang = await run_blocking(get_user_lang, message.from_user.id) or "ru"
-
         from handlers.start import main_menu
+
         await message.answer("✅ Заявка отправлена", reply_markup=main_menu(lang))
 
     except Exception as e:
         notify_error(e)
         await message.answer("❌ Ошибка")
-
-
-# =========================================
-# FALLBACK PHONE
-# =========================================
-@router.message(BookingState.phone)
-async def fallback(message: Message):
-    await message.answer("Нажмите кнопку отправки номера")
