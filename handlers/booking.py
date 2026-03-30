@@ -230,31 +230,52 @@ async def phone(message: Message, state: FSMContext):
             message.contact.phone_number,
         )
 
+        # 🔥 НАХОДИМ ROW ПОСЛЕДНЕЙ ЗАПИСИ
+        from sheets import get_spreadsheet
+        ss = get_spreadsheet()
+        ws = ss.worksheet("appointments")
+        row = len(ws.get_all_values())
+
         # =========================================
-        # 🔥 УВЕДОМЛЕНИЕ ОПЕРАТОРУ (ФИКС)
+        # 🔥 КНОПКИ ОПЕРАТОРУ
         # =========================================
-        try:
-            bot = message.bot
+        bot = message.bot
 
-            massage_name = await run_blocking(get_massage_name, data["massage_id"])
-            therapist_name = await run_blocking(get_therapist_name, data["therapist_id"])
+        massage_name = await run_blocking(get_massage_name, data["massage_id"])
+        therapist_name = await run_blocking(get_therapist_name, data["therapist_id"])
 
-            text = (
-                "🆕 <b>Новая запись</b>\n\n"
-                f"💆 {massage_name}\n"
-                f"👩‍⚕️ {therapist_name}\n"
-                f"📅 {data['date']} {data['time']}\n"
-                f"👨 {data['parent_name']}\n"
-                f"👶 {data['child_name']}\n"
-                f"📊 {data['child_age']}\n"
-                f"📞 {message.contact.phone_number}\n"
-                f"🆔 {message.from_user.id}"
-            )
+        text = (
+            "🆕 <b>Новая запись</b>\n\n"
+            f"💆 {massage_name}\n"
+            f"👩‍⚕️ {therapist_name}\n"
+            f"📅 {data['date']} {data['time']}\n"
+            f"👨 {data['parent_name']}\n"
+            f"👶 {data['child_name']}\n"
+            f"📊 {data['child_age']}\n"
+            f"📞 {message.contact.phone_number}\n"
+            f"🆔 {message.from_user.id}\n"
+            f"📌 ROW: {row}"
+        )
 
-            await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить",
+                    callback_data=f"admin_confirm_{row}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отменить",
+                    callback_data=f"admin_cancel_{row}"
+                )
+            ]
+        ])
 
-        except Exception as e:
-            notify_error(e)
+        await bot.send_message(
+            OPERATOR_ID,
+            text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
 
         await state.clear()
 
