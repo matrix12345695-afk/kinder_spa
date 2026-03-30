@@ -2,8 +2,6 @@ import asyncio
 import logging
 import traceback
 import httpx
-import threading
-import time
 import os
 
 from fastapi import FastAPI, Request
@@ -44,41 +42,37 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# SELF PING
+# 🔥 ASYNC SELF PING (НЕ БЛОКИРУЕТ)
 # =========================================
 
-def self_ping():
+async def self_ping():
     url = os.getenv("SELF_PING_URL")
 
     while True:
         try:
-            with httpx.Client(timeout=10) as client:
-                client.get(url)
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.get(url)
         except:
             pass
 
-        time.sleep(120)
-
-
-def start_self_ping():
-    threading.Thread(target=self_ping, daemon=True).start()
+        await asyncio.sleep(120)
 
 
 # =========================================
 # WEBHOOK CONTROL
 # =========================================
 
-async def ensure_webhook():
+async def ensure_webhook(force=False):
     try:
         info = await BOT.get_webhook_info()
         correct_url = WEBHOOK_URL + "/webhook"
 
-        if info.url != correct_url:
+        if force or info.url != correct_url:
             await BOT.set_webhook(correct_url)
 
             await BOT.send_message(
                 OPERATOR_ID,
-                f"🔧 Webhook восстановлен:\n{correct_url}"
+                f"🔧 Webhook установлен:\n{correct_url}"
             )
 
     except Exception as e:
@@ -142,17 +136,21 @@ async def ping():
 
 @app.on_event("startup")
 async def on_startup():
-    logging.info("🚀 STARTING BOT")
+    logging.info("🚀 STARTING KINDER SPA BOT")
 
     try:
-        await BOT.set_webhook(WEBHOOK_URL + "/webhook")
+        # 💣 ЖЁСТКО СТАВИМ webhook при старте
+        await ensure_webhook(force=True)
     except Exception as e:
         await notify_error(e)
 
     asyncio.create_task(webhook_watcher())
+    asyncio.create_task(self_ping())
 
-    start_self_ping()
 
+# =========================================
+# SHUTDOWN
+# =========================================
 
 @app.on_event("shutdown")
 async def on_shutdown():
