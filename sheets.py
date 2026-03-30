@@ -451,7 +451,13 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
     except Exception as e:
         notify_error(e)
         return []
-        def safe_call(func, *args, default=None, **kwargs):
+
+
+# =====================================================
+# SAFE CALL (🔥 ИСПРАВЛЕНО ПРАВИЛЬНО)
+# =====================================================
+
+def safe_call(func, *args, default=None, **kwargs):
     try:
         return func(*args, **kwargs)
     except Exception as e:
