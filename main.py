@@ -48,7 +48,7 @@ async def notify_error(e: Exception):
 # =========================================
 
 def self_ping():
-    url = os.getenv("SELF_PING_URL", "https://kinder-spa.onrender.com/ping")
+    url = os.getenv("SELF_PING_URL")
 
     while True:
         try:
@@ -68,35 +68,41 @@ def start_self_ping():
 
 
 # =========================================
-# WEBHOOK CONTROL (🔥 НОВОЕ)
+# WEBHOOK CONTROL
 # =========================================
+
+async def ensure_webhook():
+    try:
+        info = await BOT.get_webhook_info()
+        correct_url = WEBHOOK_URL + "/webhook"
+
+        if not info.url:
+            await BOT.set_webhook(correct_url)
+            await BOT.send_message(OPERATOR_ID, f"🚨 Webhook отсутствовал\n\n{correct_url}")
+
+        elif info.url != correct_url:
+            await BOT.set_webhook(correct_url)
+            await BOT.send_message(OPERATOR_ID, f"🔧 Webhook исправлен\n\n{info.url} → {correct_url}")
+
+    except Exception as e:
+        await notify_error(e)
+
 
 async def webhook_watcher():
     while True:
+        await ensure_webhook()
+        await asyncio.sleep(60)
+
+
+async def heartbeat():
+    while True:
         try:
-            info = await BOT.get_webhook_info()
-            correct_url = WEBHOOK_URL + "/webhook"
+            await BOT.send_message(OPERATOR_ID, "💚 Бот работает")
+        except:
+            pass
 
-            if not info.url:
-                await BOT.set_webhook(correct_url)
+        await asyncio.sleep(3600)
 
-                await BOT.send_message(
-                    OPERATOR_ID,
-                    f"🚨 Webhook отсутствовал\n\nУстановлен:\n{correct_url}"
-                )
-
-            elif info.url != correct_url:
-                await BOT.set_webhook(correct_url)
-
-                await BOT.send_message(
-                    OPERATOR_ID,
-                    f"🔧 Webhook исправлен\n\n{info.url} → {correct_url}"
-                )
-
-        except Exception as e:
-            await notify_error(e)
-
-        await asyncio.sleep(60)  # 🔥 быстрее реакция
 
 # =========================================
 # ROUTERS
@@ -121,13 +127,21 @@ async def webhook(request: Request):
         update = types.Update(**data)
         await dp.feed_update(bot=BOT, update=update)
         return {"ok": True}
+
     except Exception as e:
         await notify_error(e)
+
+        # 🔥 авто-восстановление
+        try:
+            await BOT.set_webhook(WEBHOOK_URL + "/webhook")
+        except:
+            pass
+
         return {"ok": False}
 
 
 # =========================================
-# HEALTH / PING
+# HEALTH
 # =========================================
 
 @app.get("/")
@@ -151,19 +165,14 @@ async def on_startup():
     try:
         await BOT.delete_webhook(drop_pending_updates=True)
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
-        logging.info("✅ Webhook set")
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 проверка webhook
     await ensure_webhook()
     asyncio.create_task(webhook_watcher())
+    asyncio.create_task(heartbeat())
 
-    # 🔥 self ping
-    try:
-        start_self_ping()
-    except Exception as e:
-        logging.error(f"Self ping start error: {e}")
+    start_self_ping()
 
 
 @app.on_event("shutdown")
