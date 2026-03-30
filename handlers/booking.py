@@ -2,8 +2,9 @@ from aiogram import Router, F
 from aiogram.types import *
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import asyncio
+import calendar
 
 from sheets import (
     get_user_lang,
@@ -18,7 +19,7 @@ from sheets import (
 
 router = Router()
 
-OPERATOR_ID = 8752273443  # ← ТВОЙ ID
+OPERATOR_ID = 8752273443
 
 
 # =========================================
@@ -27,6 +28,58 @@ OPERATOR_ID = 8752273443  # ← ТВОЙ ID
 async def run_blocking(func, *args):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: func(*args))
+
+
+# =========================================
+# КАЛЕНДАРЬ
+# =========================================
+def get_calendar(year: int, month: int):
+    kb = InlineKeyboardMarkup(row_width=7)
+
+    kb.row(
+        InlineKeyboardButton(
+            text=f"{calendar.month_name[month]} {year}",
+            callback_data="ignore"
+        )
+    )
+
+    days = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    kb.row(*[InlineKeyboardButton(text=d, callback_data="ignore") for d in days])
+
+    cal = calendar.monthcalendar(year, month)
+
+    for week in cal:
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
+            else:
+                date_str = f"{year}-{month:02d}-{day:02d}"
+
+                weekday = datetime(year, month, day).weekday()
+
+                if weekday == 6:
+                    row.append(
+                        InlineKeyboardButton(
+                            text=f"{day} 🔒",
+                            callback_data="ignore"
+                        )
+                    )
+                else:
+                    row.append(
+                        InlineKeyboardButton(
+                            text=str(day),
+                            callback_data=f"date_{date_str}"
+                        )
+                    )
+        kb.row(*row)
+
+    kb.row(
+        InlineKeyboardButton(text="<", callback_data=f"prev_{year}_{month}"),
+        InlineKeyboardButton(text=">", callback_data=f"next_{year}_{month}")
+    )
+
+    return kb
 
 
 # =========================================
@@ -107,33 +160,67 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await state.update_data(therapist_id=therapist_id)
     await state.set_state(BookingState.date)
 
-    today = date.today()
+    now = datetime.now()
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text=(today + timedelta(days=i)).strftime("%d.%m"),
-                callback_data=(today + timedelta(days=i)).isoformat()
-            )
-        ] for i in range(7)]
+    await cb.message.answer(
+        "📅 Выберите дату:",
+        reply_markup=get_calendar(now.year, now.month)
     )
 
-    await cb.message.answer("📅 Выберите дату:", reply_markup=kb)
+
+# =========================================
+# ПЕРЕЛИСТЫВАНИЕ КАЛЕНДАРЯ
+# =========================================
+@router.callback_query(F.data.startswith("prev_"))
+async def prev_month(cb: CallbackQuery):
+    _, year, month = cb.data.split("_")
+    year, month = int(year), int(month)
+
+    month -= 1
+    if month == 0:
+        month = 12
+        year -= 1
+
+    await cb.message.edit_reply_markup(
+        reply_markup=get_calendar(year, month)
+    )
+
+
+@router.callback_query(F.data.startswith("next_"))
+async def next_month(cb: CallbackQuery):
+    _, year, month = cb.data.split("_")
+    year, month = int(year), int(month)
+
+    month += 1
+    if month == 13:
+        month = 1
+        year += 1
+
+    await cb.message.edit_reply_markup(
+        reply_markup=get_calendar(year, month)
+    )
+
+
+@router.callback_query(F.data == "ignore")
+async def ignore(cb: CallbackQuery):
+    await cb.answer()
 
 
 # =========================================
-# DATE
+# DATE (ОБНОВЛЕНО ПОД КАЛЕНДАРЬ)
 # =========================================
-@router.callback_query(BookingState.date)
+@router.callback_query(BookingState.date, F.data.startswith("date_"))
 async def choose_date(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
+
+    selected_date = cb.data.replace("date_", "")
 
     data = await state.get_data()
 
     times = await run_blocking(
         get_free_times,
         data["therapist_id"],
-        cb.data,
+        selected_date,
         data.get("massage_duration", 30)
     )
 
@@ -146,7 +233,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
                          for t in times]
     )
 
-    await state.update_data(date=cb.data)
+    await state.update_data(date=selected_date)
     await state.set_state(BookingState.time)
 
     await cb.message.answer("⏰ Выберите время:", reply_markup=kb)
@@ -217,7 +304,6 @@ async def phone(message: Message, state: FSMContext):
     try:
         data = await state.get_data()
 
-        # 💾 СОХРАНЯЕМ
         await run_blocking(
             create_appointment,
             message.from_user.id,
@@ -230,15 +316,11 @@ async def phone(message: Message, state: FSMContext):
             message.contact.phone_number,
         )
 
-        # 🔥 НАХОДИМ ROW ПОСЛЕДНЕЙ ЗАПИСИ
         from sheets import get_spreadsheet
         ss = get_spreadsheet()
         ws = ss.worksheet("appointments")
         row = len(ws.get_all_values())
 
-        # =========================================
-        # 🔥 КНОПКИ ОПЕРАТОРУ
-        # =========================================
         bot = message.bot
 
         massage_name = await run_blocking(get_massage_name, data["massage_id"])
