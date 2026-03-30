@@ -44,7 +44,7 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# SELF PING (ANTI-SLEEP)
+# SELF PING
 # =========================================
 
 def self_ping():
@@ -117,7 +117,7 @@ dp.include_router(admin.router)
 
 
 # =========================================
-# WEBHOOK
+# WEBHOOK (🔥 ГЛАВНЫЙ ФИКС)
 # =========================================
 
 @app.post("/webhook")
@@ -125,13 +125,15 @@ async def webhook(request: Request):
     try:
         data = await request.json()
         update = types.Update(**data)
-        await dp.feed_update(bot=BOT, update=update)
+
+        # 🔥 НЕ ЖДЁМ!
+        asyncio.create_task(dp.feed_update(bot=BOT, update=update))
+
         return {"ok": True}
 
     except Exception as e:
         await notify_error(e)
 
-        # 🔥 авто-восстановление
         try:
             await BOT.set_webhook(WEBHOOK_URL + "/webhook")
         except:
