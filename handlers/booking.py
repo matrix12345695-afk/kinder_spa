@@ -23,11 +23,10 @@ OPERATOR_ID = 8752273443
 
 
 # =========================================
-# ⚡ КЕШ (ГЛАВНОЕ УСКОРЕНИЕ)
+# ⚡ КЕШ
 # =========================================
-CACHE_TTL = 60  # секунд
-
-free_times_cache = {}  # (therapist_id, date) -> (time, data)
+CACHE_TTL = 60
+free_times_cache = {}
 
 
 def get_cache(key):
@@ -40,6 +39,11 @@ def get_cache(key):
 
 def set_cache(key, value):
     free_times_cache[key] = (time.time(), value)
+
+
+async def run_blocking(func, *args):
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: func(*args))
 
 
 async def cached_free_times(therapist_id, date_str, duration):
@@ -61,33 +65,29 @@ async def cached_free_times(therapist_id, date_str, duration):
 
 
 # =========================================
-# АНТИЛАГ
-# =========================================
-async def run_blocking(func, *args):
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: func(*args))
-
-
-# =========================================
-# ⚡ БЫСТРЫЙ КАЛЕНДАРЬ
+# 🔥 КАЛЕНДАРЬ (FIX AIROGRAM 3)
 # =========================================
 async def build_calendar(year, month, therapist_id, duration, selected_day=None):
-    kb = InlineKeyboardMarkup(row_width=7)
+    kb = InlineKeyboardMarkup(inline_keyboard=[])
     today = date.today()
 
-    kb.row(InlineKeyboardButton(
-        text=f"{calendar.month_name[month]} {year}",
-        callback_data="ignore"
-    ))
+    # заголовок
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text=f"{calendar.month_name[month]} {year}",
+            callback_data="ignore"
+        )
+    ])
 
-    days = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
-    kb.row(*[InlineKeyboardButton(text=d, callback_data="ignore") for d in days])
+    # дни недели
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(text=d, callback_data="ignore")
+        for d in ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+    ])
 
     cal = calendar.monthcalendar(year, month)
 
-    # ⚡ ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ДНЕЙ
     tasks = {}
-
     for week in cal:
         for day in week:
             if day == 0:
@@ -110,7 +110,6 @@ async def build_calendar(year, month, therapist_id, duration, selected_day=None)
     for day, task in tasks.items():
         results[day] = await task
 
-    # 🎯 строим UI
     for week in cal:
         row = []
 
@@ -150,12 +149,12 @@ async def build_calendar(year, month, therapist_id, duration, selected_day=None)
                     )
                 )
 
-        kb.row(*row)
+        kb.inline_keyboard.append(row)
 
-    kb.row(
+    kb.inline_keyboard.append([
         InlineKeyboardButton(text="<", callback_data=f"prev_{year}_{month}"),
         InlineKeyboardButton(text=">", callback_data=f"next_{year}_{month}")
-    )
+    ])
 
     return kb
 
@@ -206,7 +205,7 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# THERAPIST → КАЛЕНДАРЬ
+# THERAPIST
 # =========================================
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
