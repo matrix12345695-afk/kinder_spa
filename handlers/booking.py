@@ -296,3 +296,31 @@ async def phone(message: Message, state: FSMContext):
 @router.message(BookingState.phone)
 async def fallback(message: Message):
     await message.answer("Нажмите кнопку отправки номера")
+    @router.message()
+async def force_booking_fix(message: Message, state: FSMContext):
+    text = (message.text or "").lower()
+
+    if "запис" in text or "yozil" in text:
+        await state.clear()
+
+        from sheets import get_user_lang, get_active_masses
+
+        lang = get_user_lang(message.from_user.id) or "ru"
+        massages = get_active_masses(lang)
+
+        if not massages:
+            await message.answer("❌ Нет услуг")
+            return
+
+        for m in massages:
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(
+                    text="Выбрать",
+                    callback_data=f"massage_{m.get('id')}"
+                )]]
+            )
+
+            await message.answer(
+                f"💆‍♂️ {m.get('name')}\n💰 {m.get('price')} сум",
+                reply_markup=kb
+            )
