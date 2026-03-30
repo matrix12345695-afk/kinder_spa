@@ -72,7 +72,7 @@ async def admin_all(cb: CallbackQuery):
             await cb.message.answer("Записей нет")
             return
 
-        limit = 30  # защита от спама
+        limit = 30
 
         for idx, r in enumerate(rows[:limit], start=2):
             try:
@@ -130,14 +130,24 @@ async def admin_confirm(cb: CallbackQuery):
     try:
         await cb.answer("Подтверждено ✅")
 
-        role = get_admin_role(cb.from_user.id)
-        if role != "admin":
-            await cb.answer("Нет доступа", show_alert=True)
-            return
-
         row = int(cb.data.split("_")[-1])
 
+        ss = get_spreadsheet()
+        ws = ss.worksheet("appointments")
+        record = ws.row_values(row)
+
+        user_id = int(record[0])
+
         update_appointment_status(row, "confirmed")
+
+        # 🔥 уведомление пользователю
+        try:
+            await cb.bot.send_message(
+                user_id,
+                "✅ Ваша запись подтверждена!\nЖдём вас 💚"
+            )
+        except Exception as e:
+            notify_error(e)
 
         await cb.message.edit_text(
             cb.message.text + "\n\n✅ <b>ПОДТВЕРЖДЕНО</b>",
@@ -157,14 +167,23 @@ async def admin_done(cb: CallbackQuery):
     try:
         await cb.answer("Завершено 🏁")
 
-        role = get_admin_role(cb.from_user.id)
-        if role != "admin":
-            await cb.answer("Нет доступа", show_alert=True)
-            return
-
         row = int(cb.data.split("_")[-1])
 
+        ss = get_spreadsheet()
+        ws = ss.worksheet("appointments")
+        record = ws.row_values(row)
+
+        user_id = int(record[0])
+
         update_appointment_status(row, "done")
+
+        try:
+            await cb.bot.send_message(
+                user_id,
+                "🏁 Процедура завершена.\nСпасибо за визит 💚"
+            )
+        except Exception as e:
+            notify_error(e)
 
         await cb.message.edit_text(
             cb.message.text + "\n\n🏁 <b>ЗАВЕРШЕНО</b>",
@@ -184,14 +203,23 @@ async def admin_cancel(cb: CallbackQuery):
     try:
         await cb.answer("Отменено ❌")
 
-        role = get_admin_role(cb.from_user.id)
-        if role != "admin":
-            await cb.answer("Нет доступа", show_alert=True)
-            return
-
         row = int(cb.data.split("_")[-1])
 
+        ss = get_spreadsheet()
+        ws = ss.worksheet("appointments")
+        record = ws.row_values(row)
+
+        user_id = int(record[0])
+
         update_appointment_status(row, "cancelled")
+
+        try:
+            await cb.bot.send_message(
+                user_id,
+                "❌ Ваша запись отменена.\nСвяжитесь с нами для уточнения."
+            )
+        except Exception as e:
+            notify_error(e)
 
         await cb.message.edit_text(
             cb.message.text + "\n\n❌ <b>ОТМЕНЕНО</b>",
