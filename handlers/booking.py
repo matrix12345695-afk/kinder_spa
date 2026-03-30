@@ -4,7 +4,17 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from datetime import date, timedelta
 
-from sheets import *
+from sheets import (
+    get_user_lang,
+    get_active_masses,
+    get_therapists_for_massage,
+    get_free_times,
+    create_appointment,
+    get_spreadsheet,
+    get_massage_name,
+    get_therapist_name,
+    notify_error
+)
 from handlers.start import main_menu
 
 router = Router()
