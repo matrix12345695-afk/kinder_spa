@@ -55,11 +55,22 @@ def main_menu(lang: str):
 @router.message(CommandStart())
 async def start(message: Message, state: FSMContext):
     try:
-        await state.clear()  # 🔥 важно
+        await state.clear()
 
         user_id = message.from_user.id
         lang = get_user_lang(user_id)
 
+        # 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ — СОЗДАЁМ ПОЛЬЗОВАТЕЛЯ
+        if lang is None:
+            set_user_lang(user_id, "")  # создаём запись
+
+            await message.answer(
+                "🌍 Выберите язык / Tilni tanlang:",
+                reply_markup=language_keyboard()
+            )
+            return
+
+        # если язык пустой → тоже спрашиваем
         if not lang:
             await message.answer(
                 "🌍 Выберите язык / Tilni tanlang:",
@@ -85,6 +96,7 @@ async def choose_language(message: Message, state: FSMContext):
         user_id = message.from_user.id
         lang = "uz" if "O‘zbek" in message.text else "ru"
 
+        # 🔥 ОБНОВЛЯЕМ
         set_user_lang(user_id, lang)
 
         await send_welcome(message, lang)
@@ -94,7 +106,7 @@ async def choose_language(message: Message, state: FSMContext):
 
 
 # =====================================================
-# CHANGE LANGUAGE (ТОЧНЫЙ ФИЛЬТР)
+# CHANGE LANGUAGE
 # =====================================================
 
 @router.message(F.text.in_(["🌍 Сменить язык", "🌍 Tilni o‘zgartirish"]))
@@ -108,7 +120,7 @@ async def change_language(message: Message, state: FSMContext):
 
 
 # =====================================================
-# GLOBAL GUARD (🔥 КЛЮЧЕВОЕ)
+# GLOBAL GUARD
 # =====================================================
 
 @router.message()
