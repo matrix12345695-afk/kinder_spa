@@ -60,17 +60,16 @@ async def start(message: Message, state: FSMContext):
         user_id = message.from_user.id
         lang = get_user_lang(user_id)
 
-        # 🔥 ГЛАВНОЕ ИСПРАВЛЕНИЕ — СОЗДАЁМ ПОЛЬЗОВАТЕЛЯ
+        # 🔥 СОЗДАЁМ ПОЛЬЗОВАТЕЛЯ ЕСЛИ НЕТ
         if lang is None:
-            set_user_lang(user_id, "")  # создаём запись
-
+            set_user_lang(user_id, "")
             await message.answer(
                 "🌍 Выберите язык / Tilni tanlang:",
                 reply_markup=language_keyboard()
             )
             return
 
-        # если язык пустой → тоже спрашиваем
+        # если язык пустой
         if not lang:
             await message.answer(
                 "🌍 Выберите язык / Tilni tanlang:",
@@ -96,7 +95,6 @@ async def choose_language(message: Message, state: FSMContext):
         user_id = message.from_user.id
         lang = "uz" if "O‘zbek" in message.text else "ru"
 
-        # 🔥 ОБНОВЛЯЕМ
         set_user_lang(user_id, lang)
 
         await send_welcome(message, lang)
@@ -120,13 +118,19 @@ async def change_language(message: Message, state: FSMContext):
 
 
 # =====================================================
-# GLOBAL GUARD
+# GLOBAL GUARD (НЕ ЛОМАЕТ booking)
 # =====================================================
 
 @router.message()
 async def force_language_choice(message: Message):
     user_id = message.from_user.id
     lang = get_user_lang(user_id)
+
+    text = (message.text or "").lower()
+
+    # ❗ НЕ БЛОКИРУЕМ кнопку "Записаться"
+    if "запис" in text or "yozil" in text:
+        return
 
     if not lang:
         await message.answer(
