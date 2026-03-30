@@ -5,6 +5,7 @@ from aiogram.fsm.state import StatesGroup, State
 from datetime import date, datetime
 import asyncio
 import calendar
+import time
 
 from sheets import (
     get_user_lang,
@@ -22,6 +23,44 @@ OPERATOR_ID = 8752273443
 
 
 # =========================================
+# ⚡ КЕШ (ГЛАВНОЕ УСКОРЕНИЕ)
+# =========================================
+CACHE_TTL = 60  # секунд
+
+free_times_cache = {}  # (therapist_id, date) -> (time, data)
+
+
+def get_cache(key):
+    if key in free_times_cache:
+        t, value = free_times_cache[key]
+        if time.time() - t < CACHE_TTL:
+            return value
+    return None
+
+
+def set_cache(key, value):
+    free_times_cache[key] = (time.time(), value)
+
+
+async def cached_free_times(therapist_id, date_str, duration):
+    key = (therapist_id, date_str)
+
+    cached = get_cache(key)
+    if cached is not None:
+        return cached
+
+    result = await run_blocking(
+        get_free_times,
+        therapist_id,
+        date_str,
+        duration
+    )
+
+    set_cache(key, result)
+    return result
+
+
+# =========================================
 # АНТИЛАГ
 # =========================================
 async def run_blocking(func, *args):
@@ -30,7 +69,7 @@ async def run_blocking(func, *args):
 
 
 # =========================================
-# 🔥 КАЛЕНДАРЬ С ПРОВЕРКОЙ EXCEL
+# ⚡ БЫСТРЫЙ КАЛЕНДАРЬ
 # =========================================
 async def build_calendar(year, month, therapist_id, duration, selected_day=None):
     kb = InlineKeyboardMarkup(row_width=7)
@@ -46,51 +85,68 @@ async def build_calendar(year, month, therapist_id, duration, selected_day=None)
 
     cal = calendar.monthcalendar(year, month)
 
+    # ⚡ ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ДНЕЙ
+    tasks = {}
+
+    for week in cal:
+        for day in week:
+            if day == 0:
+                continue
+
+            d = date(year, month, day)
+
+            if d < today or d.weekday() == 6:
+                continue
+
+            tasks[day] = asyncio.create_task(
+                cached_free_times(
+                    therapist_id,
+                    d.isoformat(),
+                    duration
+                )
+            )
+
+    results = {}
+    for day, task in tasks.items():
+        results[day] = await task
+
+    # 🎯 строим UI
     for week in cal:
         row = []
+
         for day in week:
             if day == 0:
                 row.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
                 continue
 
-            current_date = date(year, month, day)
-            date_str = current_date.isoformat()
+            d = date(year, month, day)
 
-            # ❌ прошлое
-            if current_date < today:
+            if d < today:
                 row.append(InlineKeyboardButton(text="❌", callback_data="ignore"))
                 continue
 
-            # 🔒 воскресенье
-            if current_date.weekday() == 6:
+            if d.weekday() == 6:
                 row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
                 continue
 
-            # 🔥 проверка Excel
-            times = await run_blocking(
-                get_free_times,
-                therapist_id,
-                date_str,
-                duration
-            )
+            times = results.get(day, [])
 
             if not times:
                 row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
                 continue
 
-            # 🔵 выбранный
             if selected_day == day:
                 row.append(
                     InlineKeyboardButton(
                         text=f"🔵 {day}",
-                        callback_data=f"date_{date_str}"
+                        callback_data=f"date_{d.isoformat()}"
                     )
                 )
             else:
                 row.append(
                     InlineKeyboardButton(
                         text=str(day),
-                        callback_data=f"date_{date_str}"
+                        callback_data=f"date_{d.isoformat()}"
                     )
                 )
 
@@ -162,7 +218,6 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await state.set_state(BookingState.date)
 
     data = await state.get_data()
-
     now = datetime.now()
 
     kb = await build_calendar(
@@ -180,45 +235,33 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 # =========================================
 @router.callback_query(F.data.startswith("prev_"))
 async def prev_month(cb: CallbackQuery, state: FSMContext):
-    _, year, month = cb.data.split("_")
-    year, month = int(year), int(month)
+    _, y, m = cb.data.split("_")
+    y, m = int(y), int(m)
 
-    month -= 1
-    if month == 0:
-        month = 12
-        year -= 1
+    m -= 1
+    if m == 0:
+        m = 12
+        y -= 1
 
     data = await state.get_data()
 
-    kb = await build_calendar(
-        year,
-        month,
-        data["therapist_id"],
-        data.get("massage_duration", 30)
-    )
-
+    kb = await build_calendar(y, m, data["therapist_id"], data.get("massage_duration", 30))
     await cb.message.edit_reply_markup(reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("next_"))
 async def next_month(cb: CallbackQuery, state: FSMContext):
-    _, year, month = cb.data.split("_")
-    year, month = int(year), int(month)
+    _, y, m = cb.data.split("_")
+    y, m = int(y), int(m)
 
-    month += 1
-    if month == 13:
-        month = 1
-        year += 1
+    m += 1
+    if m == 13:
+        m = 1
+        y += 1
 
     data = await state.get_data()
 
-    kb = await build_calendar(
-        year,
-        month,
-        data["therapist_id"],
-        data.get("massage_duration", 30)
-    )
-
+    kb = await build_calendar(y, m, data["therapist_id"], data.get("massage_duration", 30))
     await cb.message.edit_reply_markup(reply_markup=kb)
 
 
@@ -228,7 +271,7 @@ async def ignore(cb: CallbackQuery):
 
 
 # =========================================
-# DATE → ВРЕМЯ
+# DATE → TIME
 # =========================================
 @router.callback_query(BookingState.date, F.data.startswith("date_"))
 async def choose_date(cb: CallbackQuery, state: FSMContext):
@@ -237,8 +280,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     selected_date = cb.data.replace("date_", "")
     data = await state.get_data()
 
-    times = await run_blocking(
-        get_free_times,
+    times = await cached_free_times(
         data["therapist_id"],
         selected_date,
         data.get("massage_duration", 30)
@@ -250,6 +292,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
 
     buttons = []
     row = []
+
     for i, t in enumerate(times, 1):
         row.append(InlineKeyboardButton(text=t, callback_data=f"time_{t}"))
         if i % 3 == 0:
@@ -264,48 +307,3 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     await state.set_state(BookingState.time)
 
     await cb.message.answer("⏰ Выберите время:", reply_markup=kb)
-
-
-# =========================================
-# TIME → дальше без изменений
-# =========================================
-@router.callback_query(BookingState.time)
-async def choose_time(cb: CallbackQuery, state: FSMContext):
-    await cb.answer()
-
-    await state.update_data(time=cb.data.replace("time_", ""))
-    await state.set_state(BookingState.parent)
-
-    await cb.message.answer("👨‍👩‍👧 Введите имя родителя")
-
-
-@router.message(BookingState.parent)
-async def parent_name(message: Message, state: FSMContext):
-    await state.update_data(parent_name=message.text)
-    await state.set_state(BookingState.child)
-    await message.answer("👶 Имя ребенка")
-
-
-@router.message(BookingState.child)
-async def child_name(message: Message, state: FSMContext):
-    await state.update_data(child_name=message.text)
-    await state.set_state(BookingState.child_age)
-    await message.answer("📊 Введите возраст")
-
-
-@router.message(BookingState.child_age)
-async def child_age(message: Message, state: FSMContext):
-    try:
-        age = int(float(message.text))
-        await state.update_data(child_age=age)
-        await state.set_state(BookingState.phone)
-
-        kb = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="📲 Отправить номер", request_contact=True)]],
-            resize_keyboard=True
-        )
-
-        await message.answer("📱 Отправьте номер", reply_markup=kb)
-
-    except:
-        await message.answer("❌ Ошибка")
