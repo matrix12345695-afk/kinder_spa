@@ -58,7 +58,7 @@ def self_ping():
         except Exception as e:
             logging.error(f"Self ping error: {e}")
 
-        time.sleep(600)
+        time.sleep(120)
 
 
 def start_self_ping():
@@ -71,41 +71,32 @@ def start_self_ping():
 # WEBHOOK CONTROL (🔥 НОВОЕ)
 # =========================================
 
-async def ensure_webhook():
-    try:
-        info = await BOT.get_webhook_info()
-        correct_url = WEBHOOK_URL + "/webhook"
-
-        if not info.url:
-            await BOT.set_webhook(correct_url)
-            await BOT.send_message(
-                OPERATOR_ID,
-                f"🚨 <b>Webhook отсутствовал</b>\n\nУстановлен:\n{correct_url}",
-                parse_mode="HTML"
-            )
-            return
-
-        if info.url != correct_url:
-            await BOT.set_webhook(correct_url)
-            await BOT.send_message(
-                OPERATOR_ID,
-                f"🔧 <b>Webhook исправлен</b>\n\n"
-                f"Старый:\n{info.url}\n\n"
-                f"Новый:\n{correct_url}",
-                parse_mode="HTML"
-            )
-        else:
-            logging.info("✅ Webhook OK")
-
-    except Exception as e:
-        await notify_error(e)
-
-
 async def webhook_watcher():
     while True:
-        await ensure_webhook()
-        await asyncio.sleep(300)
+        try:
+            info = await BOT.get_webhook_info()
+            correct_url = WEBHOOK_URL + "/webhook"
 
+            if not info.url:
+                await BOT.set_webhook(correct_url)
+
+                await BOT.send_message(
+                    OPERATOR_ID,
+                    f"🚨 Webhook отсутствовал\n\nУстановлен:\n{correct_url}"
+                )
+
+            elif info.url != correct_url:
+                await BOT.set_webhook(correct_url)
+
+                await BOT.send_message(
+                    OPERATOR_ID,
+                    f"🔧 Webhook исправлен\n\n{info.url} → {correct_url}"
+                )
+
+        except Exception as e:
+            await notify_error(e)
+
+        await asyncio.sleep(60)  # 🔥 быстрее реакция
 
 # =========================================
 # ROUTERS
