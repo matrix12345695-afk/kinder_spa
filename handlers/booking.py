@@ -18,7 +18,7 @@ from sheets import (
 
 router = Router()
 
-OPERATOR_ID = 502438855  # ← ТВОЙ ID
+OPERATOR_ID = 8752273443  # ← ТВОЙ ID
 
 
 # =========================================
