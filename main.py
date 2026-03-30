@@ -58,13 +58,53 @@ def self_ping():
         except Exception as e:
             logging.error(f"Self ping error: {e}")
 
-        time.sleep(600)  # 10 минут
+        time.sleep(600)
 
 
 def start_self_ping():
     thread = threading.Thread(target=self_ping)
     thread.daemon = True
     thread.start()
+
+
+# =========================================
+# WEBHOOK CONTROL (🔥 НОВОЕ)
+# =========================================
+
+async def ensure_webhook():
+    try:
+        info = await BOT.get_webhook_info()
+        correct_url = WEBHOOK_URL + "/webhook"
+
+        if not info.url:
+            await BOT.set_webhook(correct_url)
+            await BOT.send_message(
+                OPERATOR_ID,
+                f"🚨 <b>Webhook отсутствовал</b>\n\nУстановлен:\n{correct_url}",
+                parse_mode="HTML"
+            )
+            return
+
+        if info.url != correct_url:
+            await BOT.set_webhook(correct_url)
+            await BOT.send_message(
+                OPERATOR_ID,
+                f"🔧 <b>Webhook исправлен</b>\n\n"
+                f"Старый:\n{info.url}\n\n"
+                f"Новый:\n{correct_url}",
+                parse_mode="HTML"
+            )
+        else:
+            logging.info("✅ Webhook OK")
+
+    except Exception as e:
+        await notify_error(e)
+
+
+async def webhook_watcher():
+    while True:
+        await ensure_webhook()
+        await asyncio.sleep(300)
 
 
 # =========================================
@@ -124,7 +164,11 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # запуск self-ping
+    # 🔥 проверка webhook
+    await ensure_webhook()
+    asyncio.create_task(webhook_watcher())
+
+    # 🔥 self ping
     try:
         start_self_ping()
     except Exception as e:
