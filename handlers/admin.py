@@ -72,7 +72,7 @@ async def admin_all(cb: CallbackQuery):
             await cb.message.answer("Записей нет")
             return
 
-        limit = 30  # 🔥 защита от спама
+        limit = 30  # защита от спама
 
         for idx, r in enumerate(rows[:limit], start=2):
             try:
@@ -123,77 +123,80 @@ async def admin_all(cb: CallbackQuery):
 
 
 # =========================
-# STATUS ACTIONS
+# CONFIRM
 # =========================
 @router.callback_query(F.data.startswith("admin_confirm_"))
 async def admin_confirm(cb: CallbackQuery):
     try:
-        await cb.answer()
+        await cb.answer("Подтверждено ✅")
 
         role = get_admin_role(cb.from_user.id)
         if role != "admin":
             await cb.answer("Нет доступа", show_alert=True)
             return
 
-        try:
-            row = int(cb.data.split("_")[-1])
-        except:
-            await cb.message.answer("❌ Ошибка данных")
-            return
+        row = int(cb.data.split("_")[-1])
 
         update_appointment_status(row, "confirmed")
 
-        await cb.message.answer("✅ Запись подтверждена")
+        await cb.message.edit_text(
+            cb.message.text + "\n\n✅ <b>ПОДТВЕРЖДЕНО</b>",
+            parse_mode="HTML"
+        )
 
     except Exception as e:
         notify_error(e)
         await cb.message.answer("❌ Ошибка")
 
 
+# =========================
+# DONE
+# =========================
 @router.callback_query(F.data.startswith("admin_done_"))
 async def admin_done(cb: CallbackQuery):
     try:
-        await cb.answer()
+        await cb.answer("Завершено 🏁")
 
         role = get_admin_role(cb.from_user.id)
         if role != "admin":
             await cb.answer("Нет доступа", show_alert=True)
             return
 
-        try:
-            row = int(cb.data.split("_")[-1])
-        except:
-            await cb.message.answer("❌ Ошибка данных")
-            return
+        row = int(cb.data.split("_")[-1])
 
         update_appointment_status(row, "done")
 
-        await cb.message.answer("🏁 Запись завершена")
+        await cb.message.edit_text(
+            cb.message.text + "\n\n🏁 <b>ЗАВЕРШЕНО</b>",
+            parse_mode="HTML"
+        )
 
     except Exception as e:
         notify_error(e)
         await cb.message.answer("❌ Ошибка")
 
 
+# =========================
+# CANCEL
+# =========================
 @router.callback_query(F.data.startswith("admin_cancel_"))
 async def admin_cancel(cb: CallbackQuery):
     try:
-        await cb.answer()
+        await cb.answer("Отменено ❌")
 
         role = get_admin_role(cb.from_user.id)
         if role != "admin":
             await cb.answer("Нет доступа", show_alert=True)
             return
 
-        try:
-            row = int(cb.data.split("_")[-1])
-        except:
-            await cb.message.answer("❌ Ошибка данных")
-            return
+        row = int(cb.data.split("_")[-1])
 
         update_appointment_status(row, "cancelled")
 
-        await cb.message.answer("❌ Запись отменена")
+        await cb.message.edit_text(
+            cb.message.text + "\n\n❌ <b>ОТМЕНЕНО</b>",
+            parse_mode="HTML"
+        )
 
     except Exception as e:
         notify_error(e)
