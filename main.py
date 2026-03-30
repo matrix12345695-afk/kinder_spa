@@ -39,8 +39,8 @@ async def notify_error(e: Exception):
 
     try:
         await BOT.send_message(OPERATOR_ID, text, parse_mode="HTML")
-    except Exception as err:
-        logging.error(f"Notify error failed: {err}")
+    except:
+        pass
 
 
 # =========================================
@@ -53,18 +53,15 @@ def self_ping():
     while True:
         try:
             with httpx.Client(timeout=10) as client:
-                r = client.get(url)
-                logging.info(f"🔄 Self ping: {r.status_code}")
-        except Exception as e:
-            logging.error(f"Self ping error: {e}")
+                client.get(url)
+        except:
+            pass
 
         time.sleep(120)
 
 
 def start_self_ping():
-    thread = threading.Thread(target=self_ping)
-    thread.daemon = True
-    thread.start()
+    threading.Thread(target=self_ping, daemon=True).start()
 
 
 # =========================================
@@ -76,13 +73,13 @@ async def ensure_webhook():
         info = await BOT.get_webhook_info()
         correct_url = WEBHOOK_URL + "/webhook"
 
-        if not info.url:
+        if info.url != correct_url:
             await BOT.set_webhook(correct_url)
-            await BOT.send_message(OPERATOR_ID, f"🚨 Webhook отсутствовал\n\n{correct_url}")
 
-        elif info.url != correct_url:
-            await BOT.set_webhook(correct_url)
-            await BOT.send_message(OPERATOR_ID, f"🔧 Webhook исправлен\n\n{info.url} → {correct_url}")
+            await BOT.send_message(
+                OPERATOR_ID,
+                f"🔧 Webhook восстановлен:\n{correct_url}"
+            )
 
     except Exception as e:
         await notify_error(e)
@@ -94,14 +91,24 @@ async def webhook_watcher():
         await asyncio.sleep(60)
 
 
-async def heartbeat():
+# =========================================
+# FALLBACK POLLING (🔥 КЛЮЧ)
+# =========================================
+
+async def polling_fallback():
     while True:
         try:
-            await BOT.send_message(OPERATOR_ID, "💚 Бот работает")
-        except:
-            pass
+            info = await BOT.get_webhook_info()
 
-        await asyncio.sleep(3600)
+            if not info.url:
+                logging.warning("⚠️ Webhook отсутствует → запускаю polling")
+
+                await dp.start_polling(BOT)
+
+        except Exception as e:
+            await notify_error(e)
+
+        await asyncio.sleep(30)
 
 
 # =========================================
@@ -117,7 +124,7 @@ dp.include_router(admin.router)
 
 
 # =========================================
-# WEBHOOK (🔥 ГЛАВНЫЙ ФИКС)
+# WEBHOOK (БЫСТРЫЙ ОТВЕТ)
 # =========================================
 
 @app.post("/webhook")
@@ -126,19 +133,12 @@ async def webhook(request: Request):
         data = await request.json()
         update = types.Update(**data)
 
-        # 🔥 НЕ ЖДЁМ!
         asyncio.create_task(dp.feed_update(bot=BOT, update=update))
 
         return {"ok": True}
 
     except Exception as e:
         await notify_error(e)
-
-        try:
-            await BOT.set_webhook(WEBHOOK_URL + "/webhook")
-        except:
-            pass
-
         return {"ok": False}
 
 
@@ -165,14 +165,12 @@ async def on_startup():
     logging.info("🚀 STARTING BOT")
 
     try:
-        await BOT.delete_webhook(drop_pending_updates=True)
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
     except Exception as e:
         await notify_error(e)
 
-    await ensure_webhook()
     asyncio.create_task(webhook_watcher())
-    asyncio.create_task(heartbeat())
+    asyncio.create_task(polling_fallback())
 
     start_self_ping()
 
@@ -181,6 +179,5 @@ async def on_startup():
 async def on_shutdown():
     try:
         await BOT.delete_webhook()
-        logging.info("🛑 Bot stopped")
-    except Exception as e:
-        logging.error(f"Shutdown error: {e}")
+    except:
+        pass
