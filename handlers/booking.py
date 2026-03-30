@@ -293,20 +293,28 @@ async def phone(message: Message, state: FSMContext):
 # =========================================
 # FALLBACK
 # =========================================
+# ВАЖНО: только показываю исправленную часть, остальное у тебя норм
+
+# =========================================
+# FALLBACK
+# =========================================
 @router.message(BookingState.phone)
 async def fallback(message: Message):
     await message.answer("Нажмите кнопку отправки номера")
-    @router.message()
+
+
+# =========================================
+# 🔥 ГЛОБАЛЬНЫЙ ЛОВЕЦ ЗАПИСИ (ФИКС)
+# =========================================
+@router.message()
 async def force_booking_fix(message: Message, state: FSMContext):
     text = (message.text or "").lower()
 
     if "запис" in text or "yozil" in text:
         await state.clear()
 
-        from sheets import get_user_lang, get_active_masses
-
-        lang = get_user_lang(message.from_user.id) or "ru"
-        massages = get_active_masses(lang)
+        lang = await run_blocking(get_user_lang, message.from_user.id) or "ru"
+        massages = await run_blocking(get_active_masses, lang)
 
         if not massages:
             await message.answer("❌ Нет услуг")
