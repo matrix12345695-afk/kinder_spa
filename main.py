@@ -92,26 +92,6 @@ async def webhook_watcher():
 
 
 # =========================================
-# FALLBACK POLLING (🔥 КЛЮЧ)
-# =========================================
-
-async def polling_fallback():
-    while True:
-        try:
-            info = await BOT.get_webhook_info()
-
-            if not info.url:
-                logging.warning("⚠️ Webhook отсутствует → запускаю polling")
-
-                await dp.start_polling(BOT)
-
-        except Exception as e:
-            await notify_error(e)
-
-        await asyncio.sleep(30)
-
-
-# =========================================
 # ROUTERS
 # =========================================
 
@@ -170,7 +150,6 @@ async def on_startup():
         await notify_error(e)
 
     asyncio.create_task(webhook_watcher())
-    asyncio.create_task(polling_fallback())
 
     start_self_ping()
 
