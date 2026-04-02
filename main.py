@@ -6,6 +6,7 @@ import os
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
+from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, WEBHOOK_URL
 from handlers import start, booking, contacts, my_appointments, operator_appointments, admin
@@ -13,7 +14,7 @@ from handlers import start, booking, contacts, my_appointments, operator_appoint
 logging.basicConfig(level=logging.INFO)
 
 BOT = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
 
 app = FastAPI()
 
@@ -42,18 +43,22 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# 🔥 ASYNC SELF PING (НЕ БЛОКИРУЕТ)
+# 🔥 SELF PING (ЗАЩИЩЁННЫЙ)
 # =========================================
 
 async def self_ping():
     url = os.getenv("SELF_PING_URL")
 
+    if not url:
+        logging.warning("SELF_PING_URL не задан — пинг отключен")
+        return
+
     while True:
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 await client.get(url)
-        except:
-            pass
+        except Exception as e:
+            logging.error(f"Ping error: {e}")
 
         await asyncio.sleep(120)
 
@@ -92,7 +97,7 @@ dp.include_router(admin.router)
 
 
 # =========================================
-# WEBHOOK (БЫСТРЫЙ ОТВЕТ)
+# WEBHOOK
 # =========================================
 
 @app.post("/webhook")
@@ -133,18 +138,13 @@ async def on_startup():
     logging.info("🚀 STARTING KINDER SPA BOT")
 
     try:
-        # ⏳ ДАЁМ СЕРВЕРУ ПОДНЯТЬСЯ (ВАЖНО!)
         await asyncio.sleep(5)
-
-        # ✅ СТАВИМ WEBHOOK ОДИН РАЗ
         await ensure_webhook(force=True)
 
     except Exception as e:
         await notify_error(e)
 
-    # ❌ УДАЛИЛИ webhook_watcher (он ломал бота)
-
-    # ✅ ОСТАВИЛИ ТОЛЬКО ПИНГ
+    # ✅ Пинг теперь безопасный
     asyncio.create_task(self_ping())
 
 
