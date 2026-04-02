@@ -2,6 +2,7 @@ import asyncio
 import logging
 import traceback
 import os
+import aiohttp
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -17,6 +18,29 @@ dp = Dispatcher(storage=MemoryStorage())
 app = FastAPI()
 
 OPERATOR_ID = 8752273443
+
+
+# =========================================
+# SELF PING 🔥 (НОВОЕ)
+# =========================================
+
+async def self_ping():
+    await asyncio.sleep(10)
+
+    url = WEBHOOK_URL  # твой render URL
+
+    while True:
+        try:
+            timeout = aiohttp.ClientTimeout(total=10)
+
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    logging.info(f"Ping status: {resp.status}")
+
+        except Exception as e:
+            logging.warning(f"Self ping failed: {e}")
+
+        await asyncio.sleep(300)  # 5 минут
 
 
 # =========================================
@@ -127,6 +151,9 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
+    # 🔥 ЗАПУСК ПИНГА
+    asyncio.create_task(self_ping())
+
 
 # =========================================
 # SHUTDOWN
@@ -136,5 +163,6 @@ async def on_startup():
 async def on_shutdown():
     try:
         await BOT.delete_webhook()
+        await BOT.session.close()  # 💥 фикс утечки
     except:
         pass
