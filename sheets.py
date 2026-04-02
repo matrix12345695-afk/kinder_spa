@@ -98,6 +98,29 @@ def get_spreadsheet():
 
 
 # =====================================================
+# AUTO CHECK (🔥 НОВОЕ)
+# =====================================================
+
+def health_check():
+    try:
+        ss = get_spreadsheet()
+        if not ss:
+            return False
+
+        # проверяем листы
+        required = ["users", "masses", "therapists", "appointments"]
+
+        for name in required:
+            ss.worksheet(name)
+
+        return True
+
+    except Exception as e:
+        notify_error(e)
+        return False
+
+
+# =====================================================
 # SAFE GET WORKSHEET
 # =====================================================
 
@@ -126,6 +149,25 @@ def get_user_lang(user_id: int):
         notify_error(e)
 
     return None
+
+
+def set_user_lang(user_id: int, lang: str):
+    try:
+        ws = get_ws("users")
+        if not ws:
+            return
+
+        records = ws.get_all_records()
+
+        for i, r in enumerate(records, start=2):
+            if str(r.get("user_id")) == str(user_id):
+                ws.update_cell(i, 2, lang)
+                return
+
+        ws.append_row([user_id, lang])
+
+    except Exception as e:
+        notify_error(e)
 
 
 # =====================================================
