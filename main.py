@@ -11,9 +11,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN, WEBHOOK_URL
 from handlers import start, booking, contacts, my_appointments, operator_appointments, admin
 
-# 🔥 ДОБАВИЛИ
-from sheets import health_check
-
 logging.basicConfig(level=logging.INFO)
 
 BOT = Bot(token=BOT_TOKEN)
@@ -22,6 +19,17 @@ dp = Dispatcher(storage=MemoryStorage())
 app = FastAPI()
 
 OPERATOR_ID = 502438855
+
+
+# =========================================
+# SAFE IMPORT (🔥 ГЛАВНОЕ)
+# =========================================
+
+try:
+    from sheets import health_check
+except Exception as e:
+    health_check = None
+    print("❌ Sheets import error:", e)
 
 
 # =========================================
@@ -46,14 +54,14 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# 🔥 SELF PING
+# SELF PING
 # =========================================
 
 async def self_ping():
     url = os.getenv("SELF_PING_URL")
 
     if not url:
-        logging.warning("SELF_PING_URL не задан — пинг отключен")
+        logging.warning("SELF_PING_URL не задан")
         return
 
     while True:
@@ -67,7 +75,7 @@ async def self_ping():
 
 
 # =========================================
-# WEBHOOK CONTROL
+# WEBHOOK
 # =========================================
 
 async def ensure_webhook(force=False):
@@ -77,11 +85,6 @@ async def ensure_webhook(force=False):
 
         if force or info.url != correct_url:
             await BOT.set_webhook(correct_url)
-
-            await BOT.send_message(
-                OPERATOR_ID,
-                f"🔧 Webhook установлен:\n{correct_url}"
-            )
 
     except Exception as e:
         await notify_error(e)
@@ -100,7 +103,7 @@ dp.include_router(admin.router)
 
 
 # =========================================
-# WEBHOOK
+# WEBHOOK HANDLER
 # =========================================
 
 @app.post("/webhook")
@@ -138,14 +141,17 @@ async def ping():
 
 @app.on_event("startup")
 async def on_startup():
-    logging.info("🚀 STARTING KINDER SPA BOT")
+    logging.info("🚀 BOT START")
 
     try:
-        await asyncio.sleep(5)
+        await asyncio.sleep(3)
 
-        # 🔥 ПРОВЕРКА SHEETS
-        if not health_check():
-            await notify_error(Exception("❌ Sheets не работает или нет доступа"))
+        # 🔥 SAFE CHECK
+        if health_check:
+            if not health_check():
+                await notify_error(Exception("Sheets недоступен"))
+        else:
+            print("⚠️ health_check не загружен")
 
         await ensure_webhook(force=True)
 
