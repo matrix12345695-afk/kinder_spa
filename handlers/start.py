@@ -47,9 +47,14 @@ async def start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     lang = get_user_lang(user_id)
 
-    if lang is None or not lang:
-        set_user_lang(user_id, "")
-        await message.answer("🌍 Выберите язык / Tilni tanlang:", reply_markup=language_keyboard())
+    # 🔥 фикс: если язык не установлен или мусор
+    if lang not in ["ru", "uz"]:
+        set_user_lang(user_id, None)
+
+        await message.answer(
+            "🌍 Выберите язык / Tilni tanlang:",
+            reply_markup=language_keyboard()
+        )
         return
 
     await send_welcome(message, lang)
@@ -63,7 +68,14 @@ async def choose_language(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
     lang = "uz" if cb.data == "lang_uz" else "ru"
+
     set_user_lang(cb.from_user.id, lang)
+
+    # 🔥 удаляем старое сообщение (чтобы не засорять чат)
+    try:
+        await cb.message.delete()
+    except:
+        pass
 
     await send_welcome(cb.message, lang)
 
@@ -87,16 +99,28 @@ async def open_booking(cb: CallbackQuery, state: FSMContext):
     massages = get_active_masses(lang)
 
     if not massages:
-        await cb.message.answer("❌ Нет услуг")
+        if lang == "uz":
+            await cb.message.answer("❌ Hozircha xizmatlar yo‘q")
+        else:
+            await cb.message.answer("❌ Нет услуг")
         return
 
     for m in massages:
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Выбрать", callback_data=f"massage_{m['id']}")
+            InlineKeyboardButton(
+                text="Выбрать" if lang == "ru" else "Tanlash",
+                callback_data=f"massage_{m['id']}"
+            )
         ]])
 
+        age_text = ""
+        if m.get("age_from") or m.get("age_to"):
+            age_text = f"\n👶 {m.get('age_from', '')} - {m.get('age_to', '')}"
+
         await cb.message.answer(
-            f"💆 {m['name']}\n💰 {m['price']} сум",
+            f"💆 {m['name']}\n"
+            f"{age_text}\n"
+            f"💰 {m['price']} сум",
             reply_markup=kb
         )
 
