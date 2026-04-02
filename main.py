@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import traceback
-import httpx
 import os
 
 from fastapi import FastAPI, Request
@@ -9,7 +8,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN, WEBHOOK_URL
-from handlers import start, booking, contacts, my_appointments, operator_appointments, admin
 
 logging.basicConfig(level=logging.INFO)
 
@@ -18,18 +16,50 @@ dp = Dispatcher(storage=MemoryStorage())
 
 app = FastAPI()
 
-OPERATOR_ID = 502438855
+OPERATOR_ID = 8752273443
 
 
 # =========================================
-# SAFE IMPORT (🔥 ГЛАВНОЕ)
+# DEBUG IMPORT SYSTEM 🔥
+# =========================================
+
+def safe_import(name):
+    try:
+        module = __import__(name, fromlist=["*"])
+        print(f"✅ {name} OK")
+        return module
+    except Exception as e:
+        print(f"❌ ERROR importing {name}: {e}")
+        traceback.print_exc()
+        return None
+
+
+# handlers
+start = safe_import("handlers.start")
+booking = safe_import("handlers.booking")
+contacts = safe_import("handlers.contacts")
+my_appointments = safe_import("handlers.my_appointments")
+operator_appointments = safe_import("handlers.operator_appointments")
+admin = safe_import("handlers.admin")
+
+# sheets
+sheets = safe_import("sheets")
+
+
+# =========================================
+# ROUTERS SAFE
 # =========================================
 
 try:
-    from sheets import health_check
+    if start: dp.include_router(start.router)
+    if booking: dp.include_router(booking.router)
+    if contacts: dp.include_router(contacts.router)
+    if my_appointments: dp.include_router(my_appointments.router)
+    if operator_appointments: dp.include_router(operator_appointments.router)
+    if admin: dp.include_router(admin.router)
 except Exception as e:
-    health_check = None
-    print("❌ Sheets import error:", e)
+    print("❌ ROUTER ERROR:", e)
+    traceback.print_exc()
 
 
 # =========================================
@@ -38,7 +68,7 @@ except Exception as e:
 
 async def notify_error(e: Exception):
     text = (
-        "🚨 <b>Ошибка</b>\n\n"
+        "🚨 <b>ERROR</b>\n\n"
         f"{type(e).__name__}\n"
         f"{str(e)}\n\n"
         f"<pre>{traceback.format_exc()}</pre>"
@@ -54,56 +84,7 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# SELF PING
-# =========================================
-
-async def self_ping():
-    url = os.getenv("SELF_PING_URL")
-
-    if not url:
-        logging.warning("SELF_PING_URL не задан")
-        return
-
-    while True:
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.get(url)
-        except Exception as e:
-            logging.error(f"Ping error: {e}")
-
-        await asyncio.sleep(120)
-
-
-# =========================================
 # WEBHOOK
-# =========================================
-
-async def ensure_webhook(force=False):
-    try:
-        info = await BOT.get_webhook_info()
-        correct_url = WEBHOOK_URL + "/webhook"
-
-        if force or info.url != correct_url:
-            await BOT.set_webhook(correct_url)
-
-    except Exception as e:
-        await notify_error(e)
-
-
-# =========================================
-# ROUTERS
-# =========================================
-
-dp.include_router(start.router)
-dp.include_router(booking.router)
-dp.include_router(contacts.router)
-dp.include_router(my_appointments.router)
-dp.include_router(operator_appointments.router)
-dp.include_router(admin.router)
-
-
-# =========================================
-# WEBHOOK HANDLER
 # =========================================
 
 @app.post("/webhook")
@@ -130,35 +111,21 @@ async def root():
     return {"status": "alive"}
 
 
-@app.get("/ping")
-async def ping():
-    return {"status": "ok"}
-
-
 # =========================================
 # STARTUP
 # =========================================
 
 @app.on_event("startup")
 async def on_startup():
-    logging.info("🚀 BOT START")
+    print("🚀 START BOT")
+
+    await asyncio.sleep(2)
 
     try:
-        await asyncio.sleep(3)
-
-        # 🔥 SAFE CHECK
-        if health_check:
-            if not health_check():
-                await notify_error(Exception("Sheets недоступен"))
-        else:
-            print("⚠️ health_check не загружен")
-
-        await ensure_webhook(force=True)
-
+        await BOT.set_webhook(WEBHOOK_URL + "/webhook")
+        print("✅ Webhook set")
     except Exception as e:
         await notify_error(e)
-
-    asyncio.create_task(self_ping())
 
 
 # =========================================
