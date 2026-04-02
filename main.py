@@ -21,7 +21,7 @@ OPERATOR_ID = 8752273443
 
 
 # =========================================
-# SELF PING 🔥 (НОВОЕ)
+# SELF PING 🔥 (НЕ ДАЁТ RENDER СПАТЬ)
 # =========================================
 
 async def self_ping():
@@ -75,19 +75,31 @@ sheets = safe_import("sheets")
 # =========================================
 
 try:
-    if start: dp.include_router(start.router)
-    if booking: dp.include_router(booking.router)
-    if contacts: dp.include_router(contacts.router)
-    if my_appointments: dp.include_router(my_appointments.router)
-    if operator_appointments: dp.include_router(operator_appointments.router)
-    if admin: dp.include_router(admin.router)
+    if start and hasattr(start, "router"):
+        dp.include_router(start.router)
+
+    if booking and hasattr(booking, "router"):
+        dp.include_router(booking.router)
+
+    if contacts and hasattr(contacts, "router"):
+        dp.include_router(contacts.router)
+
+    if my_appointments and hasattr(my_appointments, "router"):
+        dp.include_router(my_appointments.router)
+
+    if operator_appointments and hasattr(operator_appointments, "router"):
+        dp.include_router(operator_appointments.router)
+
+    if admin and hasattr(admin, "router"):
+        dp.include_router(admin.router)
+
 except Exception as e:
     print("❌ ROUTER ERROR:", e)
     traceback.print_exc()
 
 
 # =========================================
-# ERROR REPORT
+# ERROR REPORT (В ТЕЛЕГУ ОПЕРАТОРУ)
 # =========================================
 
 async def notify_error(e: Exception):
@@ -103,7 +115,7 @@ async def notify_error(e: Exception):
 
     try:
         await BOT.send_message(OPERATOR_ID, text, parse_mode="HTML")
-    except:
+    except Exception:
         pass
 
 
@@ -115,7 +127,12 @@ async def notify_error(e: Exception):
 async def webhook(request: Request):
     try:
         data = await request.json()
-        update = types.Update(**data)
+
+        # 🔥 безопасный апдейт (aiogram 3)
+        try:
+            update = types.Update.model_validate(data)
+        except Exception:
+            update = types.Update(**data)
 
         asyncio.create_task(dp.feed_update(bot=BOT, update=update))
 
@@ -127,7 +144,7 @@ async def webhook(request: Request):
 
 
 # =========================================
-# HEALTH
+# HEALTH (для Render)
 # =========================================
 
 @app.get("/")
@@ -151,7 +168,7 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 ЗАПУСК ПИНГА
+    # 🔥 запуск self ping
     asyncio.create_task(self_ping())
 
 
@@ -164,5 +181,5 @@ async def on_shutdown():
     try:
         await BOT.delete_webhook()
         await BOT.session.close()  # 💥 фикс утечки
-    except:
+    except Exception:
         pass
