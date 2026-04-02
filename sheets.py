@@ -38,12 +38,14 @@ def notify_error(e: Exception):
         f"<pre>{traceback.format_exc()}</pre>"
     )
 
+    print(error_text)
+
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
             loop.create_task(notify_error_async(error_text))
     except:
-        print(error_text)
+        pass
 
 
 # =====================================================
@@ -63,6 +65,7 @@ def get_client():
 
         creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
+        # 🔥 КРИТИЧЕСКИЙ ФИКС
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
@@ -98,7 +101,7 @@ def get_spreadsheet():
 
 
 # =====================================================
-# AUTO CHECK (🔥 НОВОЕ)
+# HEALTH CHECK
 # =====================================================
 
 def health_check():
@@ -107,7 +110,6 @@ def health_check():
         if not ss:
             return False
 
-        # проверяем листы
         required = ["users", "masses", "therapists", "appointments"]
 
         for name in required:
@@ -121,14 +123,18 @@ def health_check():
 
 
 # =====================================================
-# SAFE GET WORKSHEET
+# SAFE WORKSHEET
 # =====================================================
 
 def get_ws(name):
-    ss = get_spreadsheet()
-    if not ss:
+    try:
+        ss = get_spreadsheet()
+        if not ss:
+            return None
+        return ss.worksheet(name)
+    except Exception as e:
+        notify_error(e)
         return None
-    return ss.worksheet(name)
 
 
 # =====================================================
@@ -139,16 +145,16 @@ def get_user_lang(user_id: int):
     try:
         ws = get_ws("users")
         if not ws:
-            return None
+            return "ru"
 
         for r in ws.get_all_records():
             if str(r.get("user_id")) == str(user_id):
-                return r.get("lang")
+                return r.get("lang") or "ru"
 
     except Exception as e:
         notify_error(e)
 
-    return None
+    return "ru"
 
 
 def set_user_lang(user_id: int, lang: str):
@@ -181,6 +187,7 @@ def get_active_masses(lang="ru"):
             return []
 
         result = []
+
         for r in ws.get_all_records():
             if str(r.get("active")).lower() != "true":
                 continue
@@ -304,6 +311,7 @@ def get_all_appointments_full():
             return []
 
         result = []
+
         for idx, r in enumerate(ws.get_all_records(), start=2):
             result.append({
                 "row": idx,
