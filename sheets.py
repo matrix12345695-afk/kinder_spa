@@ -2,6 +2,7 @@ import json
 import gspread
 import traceback
 import asyncio
+import time
 
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
@@ -11,6 +12,9 @@ from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME, BOT_TOKEN
 OPERATOR_ID = 8752273443
 
 _spreadsheet = None
+_ws_cache = {}
+_cache_time = {}
+CACHE_TTL = 30
 
 
 # =====================================================
@@ -26,6 +30,8 @@ async def notify_error_async(text):
             text = text[:4000]
 
         await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
+        await bot.session.close()  # FIX утечки
+
     except:
         pass
 
@@ -122,18 +128,44 @@ def health_check():
 
 
 # =====================================================
-# SAFE WORKSHEET
+# SAFE WORKSHEET + CACHE 🔥
 # =====================================================
 
 def get_ws(name):
     try:
+        now = time.time()
+
+        if name in _ws_cache:
+            if now - _cache_time[name] < CACHE_TTL:
+                return _ws_cache[name]
+
         ss = get_spreadsheet()
         if not ss:
             return None
-        return ss.worksheet(name)
+
+        ws = ss.worksheet(name)
+
+        _ws_cache[name] = ws
+        _cache_time[name] = now
+
+        return ws
+
     except Exception as e:
         notify_error(e)
         return None
+
+
+def safe_get_records(ws):
+    for _ in range(3):
+        try:
+            return ws.get_all_records()
+        except Exception as e:
+            if "429" in str(e):
+                time.sleep(2)
+                continue
+            notify_error(e)
+            return []
+    return []
 
 
 # =====================================================
@@ -146,7 +178,7 @@ def get_user_lang(user_id: int):
         if not ws:
             return "ru"
 
-        for r in ws.get_all_records():
+        for r in safe_get_records(ws):
             if str(r.get("user_id")) == str(user_id):
                 return r.get("lang") or "ru"
 
@@ -162,7 +194,7 @@ def set_user_lang(user_id: int, lang: str):
         if not ws:
             return
 
-        records = ws.get_all_records()
+        records = safe_get_records(ws)
 
         for i, r in enumerate(records, start=2):
             if str(r.get("user_id")) == str(user_id):
@@ -176,7 +208,7 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
-# ADMIN ROLE 🔥 (НОВОЕ)
+# ADMIN ROLE 🔥
 # =====================================================
 
 def get_admin_role(user_id: int):
@@ -185,7 +217,7 @@ def get_admin_role(user_id: int):
         if not ws:
             return None
 
-        for r in ws.get_all_records():
+        for r in safe_get_records(ws):
             if str(r.get("user_id")) == str(user_id):
                 return r.get("role")
 
@@ -208,7 +240,7 @@ def get_active_masses(lang="ru"):
 
         result = []
 
-        for r in ws.get_all_records():
+        for r in safe_get_records(ws):
             if str(r.get("active")).lower() != "true":
                 continue
 
@@ -236,7 +268,7 @@ def get_massage_name(massage_id: int):
         if not ws:
             return "—"
 
-        for r in ws.get_all_records():
+        for r in safe_get_records(ws):
             if int(r.get("id", 0)) == massage_id:
                 return r.get("name_ru")
 
@@ -259,12 +291,12 @@ def get_therapists_for_massage(massage_id: int):
 
         therapists = {
             int(t["id"]): t
-            for t in ss.worksheet("therapists").get_all_records()
+            for t in safe_get_records(ss.worksheet("therapists"))
         }
 
         result = []
 
-        for l in ss.worksheet("therapist_masses").get_all_records():
+        for l in safe_get_records(ss.worksheet("therapist_masses")):
             if int(l.get("massage_id", 0)) == massage_id:
                 t = therapists.get(int(l.get("therapist_id", 0)))
                 if t:
@@ -283,7 +315,7 @@ def get_therapist_name(therapist_id: int):
         if not ws:
             return "—"
 
-        for r in ws.get_all_records():
+        for r in safe_get_records(ws):
             if int(r.get("id", 0)) == therapist_id:
                 return r.get("name")
 
@@ -332,7 +364,7 @@ def get_all_appointments_full():
 
         result = []
 
-        for idx, r in enumerate(ws.get_all_records(), start=2):
+        for idx, r in enumerate(safe_get_records(ws), start=2):
             result.append({
                 "row": idx,
                 "datetime": r.get("datetime"),
@@ -361,7 +393,7 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
             return []
 
         ws = ss.worksheet("appointments")
-        records = ws.get_all_records()
+        records = safe_get_records(ws)
 
         start_hour = 9
         end_hour = 18
