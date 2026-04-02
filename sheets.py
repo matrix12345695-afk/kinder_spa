@@ -30,7 +30,7 @@ async def notify_error_async(text):
             text = text[:4000]
 
         await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
-        await bot.session.close()  # FIX утечки
+        await bot.session.close()
 
     except:
         pass
@@ -169,6 +169,17 @@ def safe_get_records(ws):
 
 
 # =====================================================
+# HELPERS
+# =====================================================
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except:
+        return default
+
+
+# =====================================================
 # USERS
 # =====================================================
 
@@ -208,7 +219,7 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
-# ADMIN ROLE 🔥
+# ADMIN ROLE
 # =====================================================
 
 def get_admin_role(user_id: int):
@@ -247,9 +258,9 @@ def get_active_masses(lang="ru"):
             name = r.get("name_ru") if lang == "ru" else r.get("name_uz") or r.get("name_ru")
 
             result.append({
-                "id": int(r.get("id", 0)),
+                "id": safe_int(r.get("id")),
                 "name": name,
-                "duration": int(r.get("duration_min", 30)),
+                "duration": safe_int(r.get("duration_min"), 30),
                 "price": r.get("price"),
                 "age_from": r.get("age_from"),
                 "age_to": r.get("age_to"),
@@ -269,7 +280,7 @@ def get_massage_name(massage_id: int):
             return "—"
 
         for r in safe_get_records(ws):
-            if int(r.get("id", 0)) == massage_id:
+            if safe_int(r.get("id")) == massage_id:
                 return r.get("name_ru")
 
         return "—"
@@ -290,15 +301,15 @@ def get_therapists_for_massage(massage_id: int):
             return []
 
         therapists = {
-            int(t["id"]): t
+            safe_int(t.get("id")): t
             for t in safe_get_records(ss.worksheet("therapists"))
         }
 
         result = []
 
         for l in safe_get_records(ss.worksheet("therapist_masses")):
-            if int(l.get("massage_id", 0)) == massage_id:
-                t = therapists.get(int(l.get("therapist_id", 0)))
+            if safe_int(l.get("massage_id")) == massage_id:
+                t = therapists.get(safe_int(l.get("therapist_id")))
                 if t:
                     result.append(t)
 
@@ -316,7 +327,7 @@ def get_therapist_name(therapist_id: int):
             return "—"
 
         for r in safe_get_records(ws):
-            if int(r.get("id", 0)) == therapist_id:
+            if safe_int(r.get("id")) == therapist_id:
                 return r.get("name")
 
         return "—"
@@ -368,8 +379,8 @@ def get_all_appointments_full():
             result.append({
                 "row": idx,
                 "datetime": r.get("datetime"),
-                "massage": get_massage_name(int(r.get("massage_id", 0))),
-                "therapist": get_therapist_name(int(r.get("therapist_id", 0))),
+                "massage": get_massage_name(safe_int(r.get("massage_id"))),
+                "therapist": get_therapist_name(safe_int(r.get("therapist_id"))),
                 "child_name": r.get("child_name"),
                 "phone": r.get("phone"),
                 "status": r.get("status"),
@@ -408,14 +419,19 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
         busy = []
 
         for r in records:
-            if int(r.get("therapist_id", 0)) != therapist_id:
+            if safe_int(r.get("therapist_id")) != therapist_id:
                 continue
 
             dt = r.get("datetime")
-            if not dt or date_str not in dt:
+            if not dt:
                 continue
 
-            busy.append(datetime.strptime(dt, "%Y-%m-%d %H:%M"))
+            try:
+                busy_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M")
+                if date_str in dt:
+                    busy.append(busy_dt)
+            except:
+                continue
 
         free = []
 
