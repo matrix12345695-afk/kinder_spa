@@ -65,7 +65,6 @@ def get_client():
 
         creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
-        # 🔥 КРИТИЧЕСКИЙ ФИКС
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
@@ -174,6 +173,27 @@ def set_user_lang(user_id: int, lang: str):
 
     except Exception as e:
         notify_error(e)
+
+
+# =====================================================
+# ADMIN ROLE 🔥 (НОВОЕ)
+# =====================================================
+
+def get_admin_role(user_id: int):
+    try:
+        ws = get_ws("admins")
+        if not ws:
+            return None
+
+        for r in ws.get_all_records():
+            if str(r.get("user_id")) == str(user_id):
+                return r.get("role")
+
+        return None
+
+    except Exception as e:
+        notify_error(e)
+        return None
 
 
 # =====================================================
