@@ -1,7 +1,7 @@
-﻿from aiogram import Router, F
+from aiogram import Router, F
 from aiogram.types import Message
 
-from sheets import get_spreadsheet
+from sheets import get_spreadsheet, notify_error
 
 router = Router()
 
@@ -11,66 +11,96 @@ router = Router()
     (F.text.contains("Kontaktlar"))
 )
 async def contacts(message: Message):
-    ws = get_spreadsheet().worksheet("contacts")
-    rows = ws.get_all_records()
+    try:
+        ss = get_spreadsheet()
+        if not ss:
+            await message.answer("⚠️ Ошибка загрузки контактов")
+            return
 
-    text_lines = []
-    latitude = None
-    longitude = None
+        try:
+            ws = ss.worksheet("contacts")
+        except Exception as e:
+            notify_error(e)
+            await message.answer("⚠️ Контакты временно недоступны")
+            return
 
-    for r in rows:
-        title = str(r.get("title", "")).strip()
-        value = str(r.get("value", "")).strip()
+        try:
+            rows = ws.get_all_records()
+        except Exception as e:
+            notify_error(e)
+            await message.answer("⚠️ Ошибка чтения контактов")
+            return
 
-        if not title or not value:
-            continue
+        text_lines = []
+        latitude = None
+        longitude = None
 
-        # -------------------------------
-        # ЛОКАЦИЯ
-        # -------------------------------
-        if title.lower() == "latitude":
+        for r in rows:
             try:
-                latitude = float(value)
-            except:
-                pass
-            continue
+                title = str(r.get("title", "")).strip()
+                value = str(r.get("value", "")).strip()
 
-        if title.lower() == "longitude":
-            try:
-                longitude = float(value)
+                if not title or not value:
+                    continue
+
+                # -------------------------------
+                # ЛОКАЦИЯ
+                # -------------------------------
+                if title.lower() == "latitude":
+                    try:
+                        latitude = float(value)
+                    except:
+                        pass
+                    continue
+
+                if title.lower() == "longitude":
+                    try:
+                        longitude = float(value)
+                    except:
+                        pass
+                    continue
+
+                # -------------------------------
+                # ТЕЛЕФОН
+                # -------------------------------
+                if "телефон" in title.lower() or "phone" in title.lower():
+                    clean_phone = value.replace(" ", "").replace("-", "").replace("+", "")
+                    text_lines.append(
+                        f"{title} <a href=\"tel:+{clean_phone}\">{value}</a>"
+                    )
+                    continue
+
+                # -------------------------------
+                # ОБЫЧНЫЕ СТРОКИ
+                # -------------------------------
+                text_lines.append(f"{title} {value}")
+
             except:
-                pass
-            continue
+                continue
 
         # -------------------------------
-        # КЛИКАБЕЛЬНЫЙ ТЕЛЕФОН
+        # 1️⃣ ТЕКСТ
         # -------------------------------
-        if "телефон" in title.lower():
-            clean_phone = value.replace(" ", "").replace("-", "")
-            text_lines.append(
-                f"{title} <a href=\"tel:{clean_phone}\">{value}</a>"
+        if text_lines:
+            await message.answer(
+                "📞 <b>Контакты</b>\n\n" + "\n".join(text_lines),
+                parse_mode="HTML"
             )
-            continue
+        else:
+            await message.answer("📞 Контакты пока не добавлены")
 
         # -------------------------------
-        # ОБЫЧНЫЕ СТРОКИ
+        # 2️⃣ ЛОКАЦИЯ
         # -------------------------------
-        text_lines.append(f"{title} {value}")
+        if latitude is not None and longitude is not None:
+            try:
+                await message.answer_location(
+                    latitude=latitude,
+                    longitude=longitude
+                )
+            except:
+                pass
 
-    # -------------------------------
-    # 1️⃣ ОТПРАВЛЯЕМ ТЕКСТ
-    # -------------------------------
-    if text_lines:
-        await message.answer(
-            "📞 <b>Контакты</b>\n\n" + "\n".join(text_lines),
-            parse_mode="HTML"
-        )
-
-    # -------------------------------
-    # 2️⃣ ОТПРАВЛЯЕМ ЛОКАЦИЮ
-    # -------------------------------
-    if latitude is not None and longitude is not None:
-        await message.answer_location(
-            latitude=latitude,
-            longitude=longitude
-        )
+    except Exception as e:
+        notify_error(e)
+        await message.answer("⚠️ Ошибка при загрузке контактов")
