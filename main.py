@@ -11,6 +11,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN, WEBHOOK_URL
 from handlers import start, booking, contacts, my_appointments, operator_appointments, admin
 
+# 🔥 ДОБАВИЛИ
+from sheets import health_check
+
 logging.basicConfig(level=logging.INFO)
 
 BOT = Bot(token=BOT_TOKEN)
@@ -43,7 +46,7 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# 🔥 SELF PING (ЗАЩИЩЁННЫЙ)
+# 🔥 SELF PING
 # =========================================
 
 async def self_ping():
@@ -139,12 +142,16 @@ async def on_startup():
 
     try:
         await asyncio.sleep(5)
+
+        # 🔥 ПРОВЕРКА SHEETS
+        if not health_check():
+            await notify_error(Exception("❌ Sheets не работает или нет доступа"))
+
         await ensure_webhook(force=True)
 
     except Exception as e:
         await notify_error(e)
 
-    # ✅ Пинг теперь безопасный
     asyncio.create_task(self_ping())
 
 
