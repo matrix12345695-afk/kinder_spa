@@ -43,55 +43,74 @@ async def contacts(message: Message):
                 if not title or not value:
                     continue
 
-                # -------------------------------
-                # ЛОКАЦИЯ
-                # -------------------------------
-                if title.lower() == "latitude":
+                title_lower = title.lower()
+
+                # =========================================
+                # 📍 ЛОКАЦИЯ
+                # =========================================
+                if title_lower == "latitude":
                     try:
                         latitude = float(value)
                     except:
                         pass
                     continue
 
-                if title.lower() == "longitude":
+                if title_lower == "longitude":
                     try:
                         longitude = float(value)
                     except:
                         pass
                     continue
 
-                # -------------------------------
-                # ТЕЛЕФОН
-                # -------------------------------
-                if "телефон" in title.lower() or "phone" in title.lower():
+                # =========================================
+                # 📞 ТЕЛЕФОН (КЛИКАБЕЛЬНЫЙ)
+                # =========================================
+                if "телефон" in title_lower or "phone" in title_lower:
                     clean_phone = value.replace(" ", "").replace("-", "").replace("+", "")
                     text_lines.append(
-                        f"{title} <a href=\"tel:+{clean_phone}\">{value}</a>"
+                        f"📞 <b>{title}:</b> <a href=\"tel:+{clean_phone}\">{value}</a>"
                     )
                     continue
 
-                # -------------------------------
-                # ОБЫЧНЫЕ СТРОКИ
-                # -------------------------------
-                text_lines.append(f"{title} {value}")
+                # =========================================
+                # 📍 АДРЕС
+                # =========================================
+                if "адрес" in title_lower or "manzil" in title_lower:
+                    text_lines.append(f"📍 <b>{title}:</b> {value}")
+                    continue
+
+                # =========================================
+                # ⏰ РЕЖИМ РАБОТЫ
+                # =========================================
+                if "время" in title_lower or "hours" in title_lower:
+                    text_lines.append(f"⏰ <b>{title}:</b> {value}")
+                    continue
+
+                # =========================================
+                # 💬 ОСТАЛЬНОЕ
+                # =========================================
+                text_lines.append(f"ℹ️ <b>{title}:</b> {value}")
 
             except:
                 continue
 
-        # -------------------------------
-        # 1️⃣ ТЕКСТ
-        # -------------------------------
+        # =========================================
+        # 📄 ТЕКСТ
+        # =========================================
         if text_lines:
-            await message.answer(
-                "📞 <b>Контакты</b>\n\n" + "\n".join(text_lines),
-                parse_mode="HTML"
+            text = (
+                "📞 <b>Контакты Kinder Spa</b>\n\n"
+                "✨ Мы всегда на связи\n\n"
+                + "\n".join(text_lines)
             )
+
+            await message.answer(text, parse_mode="HTML")
         else:
             await message.answer("📞 Контакты пока не добавлены")
 
-        # -------------------------------
-        # 2️⃣ ЛОКАЦИЯ
-        # -------------------------------
+        # =========================================
+        # 📍 КАРТА
+        # =========================================
         if latitude is not None and longitude is not None:
             try:
                 await message.answer_location(
