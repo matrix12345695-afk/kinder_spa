@@ -27,7 +27,7 @@ OPERATOR_ID = 8752273443
 async def self_ping():
     await asyncio.sleep(10)
 
-    url = WEBHOOK_URL  # твой render URL
+    url = WEBHOOK_URL
 
     while True:
         try:
@@ -40,7 +40,7 @@ async def self_ping():
         except Exception as e:
             logging.warning(f"Self ping failed: {e}")
 
-        await asyncio.sleep(300)  # 5 минут
+        await asyncio.sleep(240)  # 🔥 было 300 → быстрее пинг
 
 
 # =========================================
@@ -68,6 +68,29 @@ admin = safe_import("handlers.admin")
 
 # sheets
 sheets = safe_import("sheets")
+
+
+# =========================================
+# 🔥 PRELOAD DATA (ускорение)
+# =========================================
+
+async def preload_data():
+    try:
+        if not sheets:
+            return
+
+        print("⚡ Preloading data...")
+
+        loop = asyncio.get_event_loop()
+
+        await loop.run_in_executor(None, sheets.get_active_masses)
+        await loop.run_in_executor(None, lambda: sheets.get_therapists_for_massage(1))
+        await loop.run_in_executor(None, sheets.get_all_appointments_full)
+
+        print("✅ Data preloaded")
+
+    except Exception as e:
+        await notify_error(e)
 
 
 # =========================================
@@ -120,7 +143,7 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# WEBHOOK
+# WEBHOOK (🔥 УСКОРЕННЫЙ)
 # =========================================
 
 @app.post("/webhook")
@@ -128,12 +151,12 @@ async def webhook(request: Request):
     try:
         data = await request.json()
 
-        # 🔥 безопасный апдейт (aiogram 3)
         try:
             update = types.Update.model_validate(data)
         except Exception:
             update = types.Update(**data)
 
+        # 🔥 НЕ блокируем FastAPI
         asyncio.create_task(dp.feed_update(bot=BOT, update=update))
 
         return {"ok": True}
@@ -168,7 +191,10 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 запуск self ping
+    # 🔥 preload данных
+    asyncio.create_task(preload_data())
+
+    # 🔥 self ping
     asyncio.create_task(self_ping())
 
 
@@ -180,6 +206,6 @@ async def on_startup():
 async def on_shutdown():
     try:
         await BOT.delete_webhook()
-        await BOT.session.close()  # 💥 фикс утечки
+        await BOT.session.close()
     except Exception:
         pass
