@@ -73,11 +73,18 @@ async def cached_free_times(therapist_id, date_str, duration):
 
 
 # =========================================
-# CALENDAR
+# CALENDAR (УЛУЧШЕННЫЙ)
 # =========================================
 async def build_calendar(year, month, therapist_id, duration):
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     today = date.today()
+
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(
+            text=f"📅 {calendar.month_name[month]} {year}",
+            callback_data="ignore"
+        )
+    ])
 
     cal = calendar.monthcalendar(year, month)
 
@@ -104,7 +111,7 @@ async def build_calendar(year, month, therapist_id, duration):
                 row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
             else:
                 row.append(InlineKeyboardButton(
-                    text=str(day),
+                    text=f"{day}",
                     callback_data=f"date_{d.isoformat()}"
                 ))
 
@@ -128,7 +135,7 @@ class BookingState(StatesGroup):
 
 
 # =========================================
-# MASSAGE
+# MASSAGE (КАРТОЧКИ)
 # =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
@@ -149,15 +156,20 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
     await state.set_state(BookingState.therapist)
 
     for t in therapists:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Выбрать", callback_data=f"therapist_{t.get('id')}")
+        kb = InlineKeyboardMarkup(inline_keyboard=[[  
+            InlineKeyboardButton(text="✨ Выбрать", callback_data=f"therapist_{t.get('id')}")
         ]])
 
-        await cb.message.answer(f"👩‍⚕️ {t.get('name')}", reply_markup=kb)
+        await cb.message.answer(
+            f"👩‍⚕️ <b>{t.get('name')}</b>\n"
+            f"✨ Профессиональный специалист",
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
 
 
 # =========================================
-# THERAPIST
+# THERAPIST → CALENDAR
 # =========================================
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
@@ -177,7 +189,11 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
         30
     )
 
-    await cb.message.answer("📅 Выберите дату:", reply_markup=kb)
+    await cb.message.answer(
+        "📅 <b>Выберите удобную дату</b>",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
 
 
 # =========================================
@@ -202,7 +218,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=t, callback_data=f"time_{t}")]
+            [InlineKeyboardButton(text=f"🕐 {t}", callback_data=f"time_{t}")]
             for t in times
         ]
     )
@@ -210,7 +226,11 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     await state.update_data(date=selected_date)
     await state.set_state(BookingState.time)
 
-    await cb.message.answer("⏰ Выберите время:", reply_markup=kb)
+    await cb.message.answer(
+        "⏰ <b>Выберите время</b>",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
 
 
 # =========================================
@@ -223,29 +243,32 @@ async def choose_time(cb: CallbackQuery, state: FSMContext):
     await state.update_data(time=cb.data.replace("time_", ""))
     await state.set_state(BookingState.parent)
 
-    await cb.message.answer("👩 Введите имя родителя:")
+    await cb.message.answer("👩 <b>Имя родителя:</b>", parse_mode="HTML")
 
 
 # =========================================
-# PARENT
+# PARENT → CHILD
 # =========================================
 @router.message(BookingState.parent)
 async def parent(message: Message, state: FSMContext):
     await state.update_data(parent_name=message.text)
     await state.set_state(BookingState.child)
 
-    await message.answer("👶 Введите имя ребёнка:")
+    await message.answer("👶 <b>Имя ребёнка:</b>", parse_mode="HTML")
 
 
 # =========================================
-# CHILD
+# CHILD → AGE
 # =========================================
 @router.message(BookingState.child)
 async def child(message: Message, state: FSMContext):
     await state.update_data(child_name=message.text)
     await state.set_state(BookingState.child_age)
 
-    await message.answer("📊 Введите возраст (например: 24 или 5 лет):")
+    await message.answer(
+        "📊 <b>Возраст ребёнка</b>\n(например: 24 или 5 лет)",
+        parse_mode="HTML"
+    )
 
 
 # =========================================
@@ -271,11 +294,11 @@ async def age(message: Message, state: FSMContext):
     await state.update_data(child_age=age)
     await state.set_state(BookingState.phone)
 
-    await message.answer("📞 Введите номер телефона:")
+    await message.answer("📞 <b>Введите номер телефона:</b>", parse_mode="HTML")
 
 
 # =========================================
-# PHONE → SAVE 🔥
+# PHONE → SAVE (КРАСИВО)
 # =========================================
 @router.message(BookingState.phone)
 async def phone(message: Message, state: FSMContext):
@@ -298,7 +321,6 @@ async def phone(message: Message, state: FSMContext):
         await message.answer("❌ Ошибка сохранения")
         return
 
-    # 🔥 ОТПРАВКА ОПЕРАТОРУ
     text = (
         "🆕 <b>Новая запись</b>\n\n"
         f"📅 {dt}\n"
@@ -308,12 +330,10 @@ async def phone(message: Message, state: FSMContext):
         f"📞 {message.text}"
     )
 
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_{row}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row}")
-        ]]
-    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_{row}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row}")
+    ]])
 
     try:
         await message.bot.send_message(
@@ -325,5 +345,5 @@ async def phone(message: Message, state: FSMContext):
     except Exception as e:
         notify_error(e)
 
-    await message.answer("✅ Запись успешно создана!")
+    await message.answer("🎉 <b>Вы успешно записаны!</b>", parse_mode="HTML")
     await state.clear()
