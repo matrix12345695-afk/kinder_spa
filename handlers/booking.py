@@ -12,8 +12,6 @@ from sheets import (
     get_therapists_for_massage,
     get_free_times,
     create_appointment,
-    get_massage_name,
-    get_therapist_name,
     notify_error,
 )
 
@@ -73,7 +71,7 @@ async def cached_free_times(therapist_id, date_str, duration):
 
 
 # =========================================
-# CALENDAR (УЛУЧШЕННЫЙ)
+# CALENDAR
 # =========================================
 async def build_calendar(year, month, therapist_id, duration):
     kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -135,7 +133,7 @@ class BookingState(StatesGroup):
 
 
 # =========================================
-# MASSAGE (КАРТОЧКИ)
+# MASSAGE
 # =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
@@ -160,8 +158,11 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
             InlineKeyboardButton(text="✨ Выбрать", callback_data=f"therapist_{t.get('id')}")
         ]])
 
+        experience = t.get("experience", "—")
+
         await cb.message.answer(
             f"👩‍⚕️ <b>{t.get('name')}</b>\n"
+            f"🧠 Опыт: {experience}\n"
             f"✨ Профессиональный специалист",
             reply_markup=kb,
             parse_mode="HTML"
@@ -169,7 +170,7 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# THERAPIST → CALENDAR
+# THERAPIST
 # =========================================
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
@@ -182,15 +183,10 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 
     now = datetime.now()
 
-    kb = await build_calendar(
-        now.year,
-        now.month,
-        therapist_id,
-        30
-    )
+    kb = await build_calendar(now.year, now.month, therapist_id, 30)
 
     await cb.message.answer(
-        "📅 <b>Выберите удобную дату</b>",
+        "📅 <b>Выберите дату</b>",
         reply_markup=kb,
         parse_mode="HTML"
     )
@@ -226,11 +222,7 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     await state.update_data(date=selected_date)
     await state.set_state(BookingState.time)
 
-    await cb.message.answer(
-        "⏰ <b>Выберите время</b>",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
+    await cb.message.answer("⏰ <b>Выберите время</b>", reply_markup=kb, parse_mode="HTML")
 
 
 # =========================================
@@ -247,33 +239,22 @@ async def choose_time(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# PARENT → CHILD
+# INPUT FLOW
 # =========================================
 @router.message(BookingState.parent)
 async def parent(message: Message, state: FSMContext):
     await state.update_data(parent_name=message.text)
     await state.set_state(BookingState.child)
-
     await message.answer("👶 <b>Имя ребёнка:</b>", parse_mode="HTML")
 
 
-# =========================================
-# CHILD → AGE
-# =========================================
 @router.message(BookingState.child)
 async def child(message: Message, state: FSMContext):
     await state.update_data(child_name=message.text)
     await state.set_state(BookingState.child_age)
-
-    await message.answer(
-        "📊 <b>Возраст ребёнка</b>\n(например: 24 или 5 лет)",
-        parse_mode="HTML"
-    )
+    await message.answer("📊 <b>Возраст ребёнка</b>\n(24 или 5 лет)", parse_mode="HTML")
 
 
-# =========================================
-# AGE
-# =========================================
 def parse_age(text):
     text = text.lower()
     try:
@@ -294,56 +275,60 @@ async def age(message: Message, state: FSMContext):
     await state.update_data(child_age=age)
     await state.set_state(BookingState.phone)
 
-    await message.answer("📞 <b>Введите номер телефона:</b>", parse_mode="HTML")
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await message.answer(
+        "📞 <b>Введите номер телефона</b>\n\nПример: +998901234567",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
 
 
 # =========================================
-# PHONE → SAVE (КРАСИВО)
+# SAVE LOGIC
 # =========================================
-@router.message(BookingState.phone)
-async def phone(message: Message, state: FSMContext):
-    data = await state.get_data()
-
-    dt = f"{data.get('date')} {data.get('time')}"
-
-    row = create_appointment(
-        message.from_user.id,
-        data.get("parent_name"),
-        data.get("child_name"),
-        data.get("child_age"),
-        message.text,
-        data.get("massage_id"),
-        data.get("therapist_id"),
-        dt
-    )
-
-    if not row:
-        await message.answer("❌ Ошибка сохранения")
-        return
-
-    text = (
-        "🆕 <b>Новая запись</b>\n\n"
-        f"📅 {dt}\n"
-        f"👩 {data.get('parent_name')}\n"
-        f"👶 {data.get('child_name')}\n"
-        f"📊 {data.get('child_age')} мес\n"
-        f"📞 {message.text}"
-    )
-
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"approve_{row}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row}")
-    ]])
-
+async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
-        await message.bot.send_message(
-            OPERATOR_ID,
-            text,
-            reply_markup=kb,
+        data = await state.get_data()
+        dt = f"{data.get('date')} {data.get('time')}"
+
+        row = create_appointment(
+            message.from_user.id,
+            data.get("parent_name"),
+            data.get("child_name"),
+            data.get("child_age"),
+            phone,
+            data.get("massage_id"),
+            data.get("therapist_id"),
+            dt
+        )
+
+        if not row:
+            await message.answer("❌ Ошибка сохранения")
+            return
+
+        await message.answer(
+            "🎉 <b>Вы успешно записаны!</b>",
+            reply_markup=ReplyKeyboardRemove(),
             parse_mode="HTML"
         )
+
+        await state.clear()
+
     except Exception as e:
         notify_error(e)
+        await message.answer("⚠️ Ошибка сохранения")
 
-    await message.answer("🎉 <b>Вы успешно записаны!</b>", parse_mode="HTML")
-    await state.clear()
+
+@router.message(BookingState.phone, F.contact)
+async def phone_contact(message: Message, state: FSMContext):
+    await save_booking(message, state, message.contact.phone_number)
+
+
+@router.message(BookingState.phone)
+async def phone_text(message: Message, state: FSMContext):
+    await save_booking(message, state, message.text)
