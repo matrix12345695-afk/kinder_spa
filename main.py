@@ -40,7 +40,7 @@ async def self_ping():
         except Exception as e:
             logging.warning(f"Self ping failed: {e}")
 
-        await asyncio.sleep(240)  # 🔥 было 300 → быстрее пинг
+        await asyncio.sleep(240)
 
 
 # =========================================
@@ -68,6 +68,9 @@ admin = safe_import("handlers.admin")
 
 # sheets
 sheets = safe_import("sheets")
+
+# 🔥 ДОБАВЛЕН cache
+cache = safe_import("cache")
 
 
 # =========================================
@@ -156,7 +159,6 @@ async def webhook(request: Request):
         except Exception:
             update = types.Update(**data)
 
-        # 🔥 НЕ блокируем FastAPI
         asyncio.create_task(dp.feed_update(bot=BOT, update=update))
 
         return {"ok": True}
@@ -191,8 +193,13 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 preload данных
+    # 🔥 preload
     asyncio.create_task(preload_data())
+
+    # 🔥 cache загрузка и автообновление
+    if cache and sheets:
+        await asyncio.to_thread(cache.load_all_data, sheets)
+        asyncio.create_task(cache.auto_update(sheets))
 
     # 🔥 self ping
     asyncio.create_task(self_ping())
