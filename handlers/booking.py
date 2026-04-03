@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import *
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import asyncio
 import calendar
 import time
@@ -71,6 +71,7 @@ async def cached_free_times(therapist_id, date_str, duration):
 async def build_calendar(year, month, therapist_id, duration):
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     today = date.today()
+    max_date = today + timedelta(days=30)  # 🔥 добавлено ограничение
 
     kb.inline_keyboard.append([
         InlineKeyboardButton(
@@ -84,7 +85,6 @@ async def build_calendar(year, month, therapist_id, duration):
         for d in ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
     ])
 
-    # 🔥 получаем график
     schedule_days = []
     try:
         ss = get_spreadsheet()
@@ -108,13 +108,13 @@ async def build_calendar(year, month, therapist_id, duration):
 
             d = date(year, month, day)
 
-            if d < today:
+            # 🔥 добавлено ограничение диапазона
+            if d < today or d > max_date:
                 row.append(InlineKeyboardButton(text="❌", callback_data="ignore"))
                 continue
 
             weekday = d.weekday() + 1
 
-            # 🔒 нет в расписании
             if weekday not in schedule_days:
                 row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
                 continue
@@ -135,7 +135,6 @@ async def build_calendar(year, month, therapist_id, duration):
 
         kb.inline_keyboard.append(row)
 
-    # 🔥 перелистывание месяцев
     prev_month = month - 1
     next_month = month + 1
     prev_year = year
@@ -157,9 +156,6 @@ async def build_calendar(year, month, therapist_id, duration):
     return kb
 
 
-# =========================================
-# СТЕЙТЫ
-# =========================================
 class BookingState(StatesGroup):
     massage = State()
     therapist = State()
@@ -171,9 +167,6 @@ class BookingState(StatesGroup):
     phone = State()
 
 
-# =========================================
-# ПЕРЕЛИСТЫВАНИЕ МЕСЯЦА
-# =========================================
 @router.callback_query(F.data.startswith("cal_"))
 async def change_month(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
@@ -196,9 +189,6 @@ async def change_month(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_reply_markup(reply_markup=kb)
 
 
-# =========================================
-# MASSAGE
-# =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
@@ -233,9 +223,6 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         )
 
 
-# =========================================
-# THERAPIST
-# =========================================
 @router.callback_query(F.data.startswith("therapist_"))
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
@@ -262,9 +249,6 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     )
 
 
-# =========================================
-# ДАЛЬШЕ ТВОЙ КОД БЕЗ ИЗМЕНЕНИЙ
-# =========================================
 @router.callback_query(BookingState.date, F.data.startswith("date_"))
 async def choose_date(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
@@ -356,6 +340,19 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
         data = await state.get_data()
         dt = f"{data.get('date')} {data.get('time')}"
+
+        # 🔥 защита от дублей
+        try:
+            ss = get_spreadsheet()
+            ws = ss.worksheet("appointments")
+            rows = ws.get_all_records()
+
+            for r in rows:
+                if str(r.get("user_id")) == str(message.from_user.id) and r.get("datetime") == dt:
+                    await message.answer("❌ Вы уже записаны на это время")
+                    return
+        except:
+            pass
 
         row = create_appointment(
             message.from_user.id,
