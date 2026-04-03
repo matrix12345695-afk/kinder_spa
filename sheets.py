@@ -16,10 +16,18 @@ _ws_cache = {}
 _cache_time = {}
 CACHE_TTL = 30
 
-# 🔥 ДОБАВЛЕН КЭШ ДАННЫХ (НИЧЕГО НЕ УДАЛЕНО)
 DATA_CACHE = {}
 DATA_CACHE_TIME = {}
 DATA_TTL = 30
+
+
+def clear_cache(name=None):
+    if name:
+        DATA_CACHE.pop(name, None)
+        DATA_CACHE_TIME.pop(name, None)
+    else:
+        DATA_CACHE.clear()
+        DATA_CACHE_TIME.clear()
 
 
 def get_cached_data(name, loader):
@@ -91,9 +99,6 @@ SCOPE = [
 
 def get_client():
     try:
-        if not GOOGLE_CREDENTIALS:
-            raise ValueError("GOOGLE_CREDENTIALS пуст")
-
         creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
         if "private_key" in creds_dict:
@@ -131,29 +136,7 @@ def get_spreadsheet():
 
 
 # =====================================================
-# HEALTH CHECK
-# =====================================================
-
-def health_check():
-    try:
-        ss = get_spreadsheet()
-        if not ss:
-            return False
-
-        required = ["users", "masses", "therapists", "appointments"]
-
-        for name in required:
-            ss.worksheet(name)
-
-        return True
-
-    except Exception as e:
-        notify_error(e)
-        return False
-
-
-# =====================================================
-# SAFE WORKSHEET + CACHE 🔥
+# WORKSHEET CACHE
 # =====================================================
 
 def get_ws(name):
@@ -244,7 +227,7 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
-# ADMIN ROLE
+# ADMIN
 # =====================================================
 
 def get_admin_role(user_id: int):
@@ -265,7 +248,7 @@ def get_admin_role(user_id: int):
 
 
 # =====================================================
-# MASSAGES (🔥 УСКОРЕНО)
+# MASSAGES
 # =====================================================
 
 def get_active_masses(lang="ru"):
@@ -276,51 +259,23 @@ def get_active_masses(lang="ru"):
 
         records = get_cached_data("masses", lambda: safe_get_records(ws))
 
-        result = []
-
-        for r in records:
-            if str(r.get("active")).lower() != "true":
-                continue
-
-            name = r.get("name_ru") if lang == "ru" else r.get("name_uz") or r.get("name_ru")
-
-            result.append({
+        return [
+            {
                 "id": safe_int(r.get("id")),
-                "name": name,
+                "name": r.get("name_ru"),
                 "duration": safe_int(r.get("duration_min"), 30),
-                "price": r.get("price"),
-                "age_from": r.get("age_from"),
-                "age_to": r.get("age_to"),
-            })
-
-        return result
+            }
+            for r in records
+            if str(r.get("active")).lower() == "true"
+        ]
 
     except Exception as e:
         notify_error(e)
         return []
 
 
-def get_massage_name(massage_id: int):
-    try:
-        ws = get_ws("masses")
-        if not ws:
-            return "—"
-
-        records = get_cached_data("masses", lambda: safe_get_records(ws))
-
-        for r in records:
-            if safe_int(r.get("id")) == massage_id:
-                return r.get("name_ru")
-
-        return "—"
-
-    except Exception as e:
-        notify_error(e)
-        return "—"
-
-
 # =====================================================
-# THERAPISTS (🔥 УСКОРЕНО)
+# THERAPISTS
 # =====================================================
 
 def get_therapists_for_massage(massage_id: int):
@@ -329,28 +284,16 @@ def get_therapists_for_massage(massage_id: int):
         if not ss:
             return []
 
-        therapists_data = get_cached_data(
-            "therapists",
-            lambda: safe_get_records(ss.worksheet("therapists"))
-        )
-
-        links_data = get_cached_data(
-            "therapist_links",
-            lambda: safe_get_records(ss.worksheet("therapist_masses"))
-        )
-
-        therapists = {
-            safe_int(t.get("id")): t
-            for t in therapists_data
-        }
+        therapists = safe_get_records(ss.worksheet("therapists"))
+        links = safe_get_records(ss.worksheet("therapist_masses"))
 
         result = []
 
-        for l in links_data:
+        for l in links:
             if safe_int(l.get("massage_id")) == massage_id:
-                t = therapists.get(safe_int(l.get("therapist_id")))
-                if t:
-                    result.append(t)
+                for t in therapists:
+                    if safe_int(t.get("id")) == safe_int(l.get("therapist_id")):
+                        result.append(t)
 
         return result
 
@@ -359,43 +302,42 @@ def get_therapists_for_massage(massage_id: int):
         return []
 
 
-def get_therapist_name(therapist_id: int):
-    try:
-        ws = get_ws("therapists")
-        if not ws:
-            return "—"
-
-        records = get_cached_data("therapists", lambda: safe_get_records(ws))
-
-        for r in records:
-            if safe_int(r.get("id")) == therapist_id:
-                return r.get("name")
-
-        return "—"
-
-    except Exception as e:
-        notify_error(e)
-        return "—"
-
-
 # =====================================================
-# APPOINTMENTS
+# CREATE APPOINTMENT (🔥 ГЛАВНЫЙ ФИКС)
 # =====================================================
 
-def create_appointment(*args):
+def create_appointment(
+    user_id,
+    parent_name,
+    child_name,
+    child_age,
+    phone,
+    massage_id,
+    therapist_id,
+    dt
+):
     try:
         ws = get_ws("appointments")
         if not ws:
             return None
 
-        ws.append_row(list(args) + ["pending"])
+        row = [
+            user_id,
+            massage_id,
+            therapist_id,
+            dt,
+            parent_name,
+            child_name,
+            child_age,
+            phone,
+            "pending"
+        ]
 
-        try:
-            all_values = ws.get_all_values()
-            return len(all_values)
-        except Exception as e:
-            notify_error(e)
-            return None
+        ws.append_row(row)
+
+        clear_cache("appointments")
+
+        return True
 
     except Exception as e:
         notify_error(e)
@@ -409,52 +351,23 @@ def update_appointment_status(row: int, new_status: str):
             return
 
         ws.update_cell(row, 9, new_status)
+        clear_cache("appointments")
 
     except Exception as e:
         notify_error(e)
 
 
-def get_all_appointments_full():
+# =====================================================
+# FREE TIMES (🔥 ИСПРАВЛЕНО)
+# =====================================================
+
+def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
     try:
         ws = get_ws("appointments")
         if not ws:
             return []
 
-        records = get_cached_data("appointments", lambda: safe_get_records(ws))
-
-        result = []
-
-        for idx, r in enumerate(records, start=2):
-            result.append({
-                "row": idx,
-                "datetime": r.get("datetime"),
-                "massage": get_massage_name(safe_int(r.get("massage_id"))),
-                "therapist": get_therapist_name(safe_int(r.get("therapist_id"))),
-                "child_name": r.get("child_name"),
-                "phone": r.get("phone"),
-                "status": r.get("status"),
-            })
-
-        return result
-
-    except Exception as e:
-        notify_error(e)
-        return []
-
-
-# =====================================================
-# FREE TIMES (🔥 УСКОРЕНО)
-# =====================================================
-
-def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
-    try:
-        ss = get_spreadsheet()
-        if not ss:
-            return []
-
-        ws = ss.worksheet("appointments")
-
-        records = get_cached_data("appointments", lambda: safe_get_records(ws))
+        records = safe_get_records(ws)
 
         start_hour = 9
         end_hour = 18
@@ -470,6 +383,9 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
 
         for r in records:
             if safe_int(r.get("therapist_id")) != therapist_id:
+                continue
+
+            if r.get("status") not in ["pending", "approved"]:
                 continue
 
             dt = r.get("datetime")
