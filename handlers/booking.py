@@ -342,3 +342,23 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     except Exception as e:
         notify_error(e)
         await cb.message.answer("⚠️ Ошибка выбора даты")
+        # =========================================
+# TIME → NEXT STEP
+# =========================================
+@router.callback_query(BookingState.time, F.data.startswith("time_"))
+async def choose_time(cb: CallbackQuery, state: FSMContext):
+    try:
+        await cb.answer()
+
+        selected_time = cb.data.replace("time_", "")
+
+        await state.update_data(time=selected_time)
+        await state.set_state(BookingState.parent)
+
+        await cb.message.answer(
+            "👩 Введите имя родителя:"
+        )
+
+    except Exception as e:
+        notify_error(e)
+        await cb.message.answer("⚠️ Ошибка выбора времени")
