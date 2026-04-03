@@ -20,13 +20,18 @@ OPERATOR_ID = 8752273443
 
 
 # =========================================
-# SAFE IMPORT (ЖЁСТКИЙ)
+# SAFE IMPORT (НЕ УБИВАЕТ ДЕПЛОЙ)
 # =========================================
 
 def safe_import(name):
-    module = __import__(name, fromlist=["*"])
-    logging.info(f"✅ {name} loaded")
-    return module
+    try:
+        module = __import__(name, fromlist=["*"])
+        logging.info(f"✅ {name} loaded")
+        return module
+    except Exception as e:
+        logging.error(f"❌ IMPORT ERROR {name}: {e}")
+        traceback.print_exc()
+        return None
 
 
 # handlers
@@ -45,15 +50,26 @@ cache = safe_import("cache")
 
 
 # =========================================
-# ROUTERS
+# ROUTERS (БЕЗ ПАДЕНИЯ)
 # =========================================
 
-dp.include_router(start.router)
-dp.include_router(booking.router)
-dp.include_router(contacts.router)
-dp.include_router(my_appointments.router)
-dp.include_router(operator_appointments.router)
-dp.include_router(admin.router)
+for module in [
+    start,
+    booking,
+    contacts,
+    my_appointments,
+    operator_appointments,
+    admin
+]:
+    try:
+        if module and hasattr(module, "router"):
+            dp.include_router(module.router)
+            logging.info(f"✅ Router подключен: {module.__name__}")
+        else:
+            logging.warning(f"⚠️ Нет router в {module}")
+    except Exception as e:
+        logging.error(f"❌ Router error: {e}")
+        traceback.print_exc()
 
 
 # =========================================
@@ -102,6 +118,10 @@ async def self_ping():
 
 async def preload_data():
     try:
+        if not sheets:
+            logging.warning("⚠️ sheets не загружен")
+            return
+
         logging.info("⚡ Preloading data...")
 
         await asyncio.to_thread(sheets.get_active_masses)
@@ -122,7 +142,6 @@ async def preload_data():
 async def webhook(request: Request):
     try:
         data = await request.json()
-
         update = types.Update.model_validate(data)
 
         await dp.feed_update(bot=BOT, update=update)
@@ -135,7 +154,7 @@ async def webhook(request: Request):
 
 
 # =========================================
-# HEALTH
+# HEALTH (ВАЖНО ДЛЯ RENDER)
 # =========================================
 
 @app.get("/")
@@ -161,9 +180,12 @@ async def on_startup():
 
     asyncio.create_task(preload_data())
 
-    if cache:
-        await asyncio.to_thread(cache.load_all_data, sheets)
-        asyncio.create_task(cache.auto_update(sheets))
+    if cache and sheets:
+        try:
+            await asyncio.to_thread(cache.load_all_data, sheets)
+            asyncio.create_task(cache.auto_update(sheets))
+        except Exception as e:
+            logging.error(f"Cache error: {e}")
 
     asyncio.create_task(self_ping())
 
