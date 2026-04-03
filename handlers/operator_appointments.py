@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
+import asyncio
 
 from sheets import (
     get_admin_role,
@@ -18,126 +19,117 @@ def safe_int(value, default=0):
         return default
 
 
+async def run_blocking(func, *args):
+    return await asyncio.to_thread(func, *args)
+
+
 @router.callback_query(F.data.startswith(("approve_", "reject_")))
 async def process_appointment(cb: CallbackQuery):
-    try:
-        await cb.answer()
+    await cb.answer()
 
+    try:
         user_id = cb.from_user.id
 
-        # 🔐 проверка роли
+        # =========================================
+        # 🔐 ПРОВЕРКА РОЛИ
+        # =========================================
         try:
-            role = get_admin_role(user_id)
+            role = await run_blocking(get_admin_role, user_id)
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             role = None
 
         if role != "operator":
-            try:
-                await cb.message.edit_reply_markup(reply_markup=None)
-            except:
-                pass
-
             await cb.message.answer("❌ У вас нет доступа")
             return
 
         # =========================================
-        # 🔥 РАЗБОР CALLBACK (approve_15)
+        # 🔍 РАЗБОР CALLBACK
         # =========================================
         try:
             action, row_str = cb.data.split("_")
             row = safe_int(row_str)
 
             if row <= 1:
-                await cb.message.answer("⚠️ Некорректный ID записи")
+                await cb.message.answer("⚠️ Некорректный ID")
                 return
 
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             await cb.message.answer("⚠️ Ошибка данных")
             return
 
         # =========================================
         # 📊 ПОЛУЧАЕМ ТАБЛИЦУ
         # =========================================
-        ss = get_spreadsheet()
-        if not ss:
-            await cb.message.answer("⚠️ Ошибка базы данных")
-            return
-
         try:
-            ws = ss.worksheet("appointments")
+            ss = await run_blocking(get_spreadsheet)
+            ws = await asyncio.to_thread(ss.worksheet, "appointments")
         except Exception as e:
-            notify_error(e)
-            await cb.message.answer("⚠️ Ошибка таблицы")
+            await notify_error(e)
+            await cb.message.answer("⚠️ Ошибка базы")
             return
 
         # =========================================
         # ⛔ ПРОВЕРКА СТАТУСА
         # =========================================
         try:
-            current_status = ws.cell(row, 9).value
+            current_status = await asyncio.to_thread(lambda: ws.cell(row, 9).value)
         except Exception as e:
-            notify_error(e)
-            await cb.message.answer("⚠️ Ошибка чтения записи")
+            await notify_error(e)
+            await cb.message.answer("⚠️ Ошибка чтения")
             return
 
         if current_status != "pending":
-            try:
-                await cb.message.edit_reply_markup(reply_markup=None)
-            except:
-                pass
+            await cb.message.edit_reply_markup(reply_markup=None)
+            await cb.message.answer("⚠️ Уже обработано")
             return
 
         # =========================================
-        # 📥 ЧИТАЕМ ДАННЫЕ ЗАПИСИ
+        # 📥 ЧИТАЕМ ДАННЫЕ
         # =========================================
         try:
-            record = ws.row_values(row)
+            record = await asyncio.to_thread(ws.row_values, row)
 
             client_id = safe_int(record[0]) if len(record) > 0 else None
             parent_name = record[1] if len(record) > 1 else "—"
             child_name = record[2] if len(record) > 2 else "—"
             age = record[3] if len(record) > 3 else "—"
             phone = record[4] if len(record) > 4 else "—"
-            massage_id = safe_int(record[5]) if len(record) > 5 else 0
-            therapist_id = safe_int(record[6]) if len(record) > 6 else 0
             dt = record[7] if len(record) > 7 else "—"
 
         except Exception as e:
-            notify_error(e)
-            client_id = None
-            parent_name = child_name = phone = dt = "—"
-            age = "—"
-            massage_id = therapist_id = 0
+            await notify_error(e)
+            await cb.message.answer("⚠️ Ошибка данных")
+            return
 
         # =========================================
-        # ✅ ОБНОВЛЕНИЕ СТАТУСА
+        # 🔄 ОБНОВЛЕНИЕ СТАТУСА
         # =========================================
         try:
             if action == "approve":
-                update_appointment_status(row, "approved")
+                await run_blocking(update_appointment_status, row, "approved")
                 mark = "✅ ПРИНЯТО"
 
                 client_text = (
-                    "✅ <b>Ваша запись подтверждена!</b>\n\n"
+                    "✅ <b>Запись подтверждена!</b>\n\n"
                     f"📅 {dt}\n"
-                    "Мы ждём вас 💚"
+                    "Ждём вас 💚"
                 )
 
             else:
-                update_appointment_status(row, "rejected")
+                await run_blocking(update_appointment_status, row, "rejected")
                 mark = "❌ ОТКЛОНЕНО"
 
                 client_text = (
-                    "❌ <b>Ваша запись отклонена.</b>\n\n"
+                    "❌ <b>Запись отклонена</b>\n\n"
                     f"📅 {dt}\n"
-                    "Свяжитесь с нами для подбора другого времени."
+                    "Напишите нам для нового времени"
                 )
 
         except Exception as e:
-            notify_error(e)
-            await cb.message.answer("⚠️ Ошибка обновления статуса")
+            await notify_error(e)
+            await cb.message.answer("⚠️ Ошибка обновления")
             return
 
         # =========================================
@@ -145,31 +137,35 @@ async def process_appointment(cb: CallbackQuery):
         # =========================================
         if client_id:
             try:
-                await cb.bot.send_message(
-                    client_id,
-                    client_text,
-                    parse_mode="HTML"
-                )
+                await cb.bot.send_message(client_id, client_text, parse_mode="HTML")
             except Exception as e:
-                notify_error(e)
+                await notify_error(e)
 
         # =========================================
-        # ✏️ ОБНОВЛЕНИЕ СООБЩЕНИЯ ОПЕРАТОРА
+        # 🧹 УБИРАЕМ КНОПКИ
+        # =========================================
+        try:
+            await cb.message.edit_reply_markup(reply_markup=None)
+        except:
+            pass
+
+        # =========================================
+        # ✏️ ОБНОВЛЯЕМ ТЕКСТ
         # =========================================
         try:
             new_text = (
                 cb.message.text +
                 f"\n\n<b>{mark}</b>\n"
-                f"🆔 Строка: {row}"
+                f"👤 {parent_name} / {child_name}\n"
+                f"📞 {phone}\n"
+                f"🆔 {row}"
             )
 
-            await cb.message.edit_text(
-                new_text,
-                parse_mode="HTML"
-            )
-        except:
-            pass
+            await cb.message.edit_text(new_text, parse_mode="HTML")
+
+        except Exception as e:
+            await notify_error(e)
 
     except Exception as e:
-        notify_error(e)
-        await cb.message.answer("⚠️ Ошибка обработки заявки")
+        await notify_error(e)
+        await cb.message.answer("⚠️ Ошибка обработки")
