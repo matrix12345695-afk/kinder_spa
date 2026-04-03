@@ -349,7 +349,6 @@ def create_appointment(*args):
 
         ws.append_row(list(args) + ["pending"])
 
-        # 🔥 возвращаем номер строки
         try:
             all_values = ws.get_all_values()
             row_number = len(all_values)
@@ -395,6 +394,59 @@ def get_all_appointments_full():
             })
 
         return result
+
+    except Exception as e:
+        notify_error(e)
+        return []
+
+
+# =====================================================
+# FREE TIMES
+# =====================================================
+
+def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
+    try:
+        ss = get_spreadsheet()
+        if not ss:
+            return []
+
+        ws = ss.worksheet("appointments")
+        records = safe_get_records(ws)
+
+        start_hour = 9
+        end_hour = 18
+
+        slots = []
+        current = datetime.strptime(f"{date_str} {start_hour}:00", "%Y-%m-%d %H:%M")
+
+        while current < datetime.strptime(f"{date_str} {end_hour}:00", "%Y-%m-%d %H:%M"):
+            slots.append(current)
+            current += timedelta(minutes=30)
+
+        busy = []
+
+        for r in records:
+            if safe_int(r.get("therapist_id")) != therapist_id:
+                continue
+
+            dt = r.get("datetime")
+            if not dt:
+                continue
+
+            try:
+                busy_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M")
+                if date_str in dt:
+                    busy.append(busy_dt)
+            except:
+                continue
+
+        free = []
+
+        for slot in slots:
+            if all(abs((slot - b).total_seconds()) >= duration_min * 60 for b in busy):
+                free.append(slot.strftime("%H:%M"))
+
+        return free
 
     except Exception as e:
         notify_error(e)
