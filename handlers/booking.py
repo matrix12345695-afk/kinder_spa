@@ -207,17 +207,14 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         await state.set_state(BookingState.therapist)
 
         for t in therapists:
-            try:
-                kb = InlineKeyboardMarkup(inline_keyboard=[[
-                    InlineKeyboardButton(text="Выбрать", callback_data=f"therapist_{t.get('id')}")
-                ]])
+            kb = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Выбрать", callback_data=f"therapist_{t.get('id')}")
+            ]])
 
-                await cb.message.answer(
-                    f"👩‍⚕️ {t.get('name','—')}\n🧠 {t.get('experience','—')}",
-                    reply_markup=kb
-                )
-            except:
-                continue
+            await cb.message.answer(
+                f"👩‍⚕️ {t.get('name','—')}\n🧠 {t.get('experience','—')}",
+                reply_markup=kb
+            )
 
     except Exception as e:
         notify_error(e)
@@ -252,52 +249,6 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     except Exception as e:
         notify_error(e)
         await cb.message.answer("⚠️ Ошибка выбора специалиста")
-
-
-# =========================================
-# ПЕРЕЛИСТЫВАНИЕ
-# =========================================
-@router.callback_query(F.data.startswith("prev_"))
-async def prev_month(cb: CallbackQuery, state: FSMContext):
-    try:
-        _, y, m = cb.data.split("_")
-        y, m = int(y), int(m)
-
-        m -= 1
-        if m == 0:
-            m = 12
-            y -= 1
-
-        data = await state.get_data()
-
-        kb = await build_calendar(y, m, data.get("therapist_id"), data.get("massage_duration", 30))
-        await cb.message.edit_reply_markup(reply_markup=kb)
-    except:
-        pass
-
-
-@router.callback_query(F.data.startswith("next_"))
-async def next_month(cb: CallbackQuery, state: FSMContext):
-    try:
-        _, y, m = cb.data.split("_")
-        y, m = int(y), int(m)
-
-        m += 1
-        if m == 13:
-            m = 1
-            y += 1
-
-        data = await state.get_data()
-
-        kb = await build_calendar(y, m, data.get("therapist_id"), data.get("massage_duration", 30))
-        await cb.message.edit_reply_markup(reply_markup=kb)
-    except:
-        pass
-
-
-@router.callback_query(F.data == "ignore")
-async def ignore(cb: CallbackQuery):
-    await cb.answer()
 
 
 # =========================================
@@ -342,23 +293,86 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     except Exception as e:
         notify_error(e)
         await cb.message.answer("⚠️ Ошибка выбора даты")
-        # =========================================
-# TIME → NEXT STEP
+
+
+# =========================================
+# TIME → PARENT
 # =========================================
 @router.callback_query(BookingState.time, F.data.startswith("time_"))
 async def choose_time(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    await state.update_data(time=cb.data.replace("time_", ""))
+    await state.set_state(BookingState.parent)
+    await cb.message.answer("👩 Введите имя родителя:")
+
+
+# =========================================
+# PARENT → CHILD
+# =========================================
+@router.message(BookingState.parent)
+async def input_parent(message: Message, state: FSMContext):
+    await state.update_data(parent_name=message.text)
+    await state.set_state(BookingState.child)
+    await message.answer("👶 Введите имя ребёнка:")
+
+
+# =========================================
+# CHILD → AGE
+# =========================================
+@router.message(BookingState.child)
+async def input_child(message: Message, state: FSMContext):
+    await state.update_data(child_name=message.text)
+    await state.set_state(BookingState.child_age)
+    await message.answer("📊 Введите возраст (например: 24 или 5 лет):")
+
+
+def parse_age(text):
+    text = text.lower()
     try:
-        await cb.answer()
+        num = int(''.join(filter(str.isdigit, text)))
+        return num * 12 if "лет" in text or "год" in text else num
+    except:
+        return None
 
-        selected_time = cb.data.replace("time_", "")
 
-        await state.update_data(time=selected_time)
-        await state.set_state(BookingState.parent)
+# =========================================
+# AGE → PHONE
+# =========================================
+@router.message(BookingState.child_age)
+async def input_age(message: Message, state: FSMContext):
+    age = parse_age(message.text)
+    if not age:
+        await message.answer("❌ Введите корректный возраст")
+        return
 
-        await cb.message.answer(
-            "👩 Введите имя родителя:"
-        )
+    await state.update_data(child_age=age)
+    await state.set_state(BookingState.phone)
+    await message.answer("📞 Введите номер телефона:")
 
-    except Exception as e:
-        notify_error(e)
-        await cb.message.answer("⚠️ Ошибка выбора времени")
+
+# =========================================
+# PHONE → SAVE
+# =========================================
+@router.message(BookingState.phone)
+async def input_phone(message: Message, state: FSMContext):
+    data = await state.get_data()
+
+    dt = f"{data.get('date')} {data.get('time')}"
+
+    success = create_appointment(
+        message.from_user.id,
+        data.get("parent_name"),
+        data.get("child_name"),
+        data.get("child_age"),
+        message.text,
+        data.get("massage_id"),
+        data.get("therapist_id"),
+        dt
+    )
+
+    if not success:
+        await message.answer("❌ Ошибка сохранения")
+        return
+
+    await message.answer("✅ Запись создана!")
+    await state.clear()
