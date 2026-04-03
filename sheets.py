@@ -16,6 +16,31 @@ _ws_cache = {}
 _cache_time = {}
 CACHE_TTL = 30
 
+# 🔥 ДОБАВЛЕН КЭШ ДАННЫХ (НИЧЕГО НЕ УДАЛЕНО)
+DATA_CACHE = {}
+DATA_CACHE_TIME = {}
+DATA_TTL = 30
+
+
+def get_cached_data(name, loader):
+    try:
+        now = time.time()
+
+        if name in DATA_CACHE:
+            if now - DATA_CACHE_TIME[name] < DATA_TTL:
+                return DATA_CACHE[name]
+
+        data = loader()
+
+        DATA_CACHE[name] = data
+        DATA_CACHE_TIME[name] = now
+
+        return data
+
+    except Exception as e:
+        notify_error(e)
+        return []
+
 
 # =====================================================
 # ERROR REPORT
@@ -240,7 +265,7 @@ def get_admin_role(user_id: int):
 
 
 # =====================================================
-# MASSAGES
+# MASSAGES (🔥 УСКОРЕНО)
 # =====================================================
 
 def get_active_masses(lang="ru"):
@@ -249,9 +274,11 @@ def get_active_masses(lang="ru"):
         if not ws:
             return []
 
+        records = get_cached_data("masses", lambda: safe_get_records(ws))
+
         result = []
 
-        for r in safe_get_records(ws):
+        for r in records:
             if str(r.get("active")).lower() != "true":
                 continue
 
@@ -279,7 +306,9 @@ def get_massage_name(massage_id: int):
         if not ws:
             return "—"
 
-        for r in safe_get_records(ws):
+        records = get_cached_data("masses", lambda: safe_get_records(ws))
+
+        for r in records:
             if safe_int(r.get("id")) == massage_id:
                 return r.get("name_ru")
 
@@ -291,7 +320,7 @@ def get_massage_name(massage_id: int):
 
 
 # =====================================================
-# THERAPISTS
+# THERAPISTS (🔥 УСКОРЕНО)
 # =====================================================
 
 def get_therapists_for_massage(massage_id: int):
@@ -300,14 +329,24 @@ def get_therapists_for_massage(massage_id: int):
         if not ss:
             return []
 
+        therapists_data = get_cached_data(
+            "therapists",
+            lambda: safe_get_records(ss.worksheet("therapists"))
+        )
+
+        links_data = get_cached_data(
+            "therapist_links",
+            lambda: safe_get_records(ss.worksheet("therapist_masses"))
+        )
+
         therapists = {
             safe_int(t.get("id")): t
-            for t in safe_get_records(ss.worksheet("therapists"))
+            for t in therapists_data
         }
 
         result = []
 
-        for l in safe_get_records(ss.worksheet("therapist_masses")):
+        for l in links_data:
             if safe_int(l.get("massage_id")) == massage_id:
                 t = therapists.get(safe_int(l.get("therapist_id")))
                 if t:
@@ -326,7 +365,9 @@ def get_therapist_name(therapist_id: int):
         if not ws:
             return "—"
 
-        for r in safe_get_records(ws):
+        records = get_cached_data("therapists", lambda: safe_get_records(ws))
+
+        for r in records:
             if safe_int(r.get("id")) == therapist_id:
                 return r.get("name")
 
@@ -338,7 +379,7 @@ def get_therapist_name(therapist_id: int):
 
 
 # =====================================================
-# APPOINTMENTS 🔥 (ИЗМЕНЕНО)
+# APPOINTMENTS
 # =====================================================
 
 def create_appointment(*args):
@@ -351,8 +392,7 @@ def create_appointment(*args):
 
         try:
             all_values = ws.get_all_values()
-            row_number = len(all_values)
-            return row_number
+            return len(all_values)
         except Exception as e:
             notify_error(e)
             return None
@@ -380,9 +420,11 @@ def get_all_appointments_full():
         if not ws:
             return []
 
+        records = get_cached_data("appointments", lambda: safe_get_records(ws))
+
         result = []
 
-        for idx, r in enumerate(safe_get_records(ws), start=2):
+        for idx, r in enumerate(records, start=2):
             result.append({
                 "row": idx,
                 "datetime": r.get("datetime"),
@@ -401,7 +443,7 @@ def get_all_appointments_full():
 
 
 # =====================================================
-# FREE TIMES
+# FREE TIMES (🔥 УСКОРЕНО)
 # =====================================================
 
 def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
@@ -411,7 +453,8 @@ def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
             return []
 
         ws = ss.worksheet("appointments")
-        records = safe_get_records(ws)
+
+        records = get_cached_data("appointments", lambda: safe_get_records(ws))
 
         start_hour = 9
         end_hour = 18
