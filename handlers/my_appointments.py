@@ -22,7 +22,9 @@ async def my_appointments(message: Message):
             await message.answer("⚠️ Ошибка загрузки записей")
             return
 
-        # 🔥 фильтрация по пользователю (ВАЖНО)
+        # =========================================
+        # ФИЛЬТРАЦИЯ
+        # =========================================
         user_appointments = []
 
         for a in appointments:
@@ -32,19 +34,27 @@ async def my_appointments(message: Message):
             except:
                 continue
 
-        # -------------------------------------------------
-        # ЕСЛИ ЗАПИСЕЙ НЕТ
-        # -------------------------------------------------
+        # =========================================
+        # ЕСЛИ НЕТ ЗАПИСЕЙ
+        # =========================================
         if not user_appointments:
             if lang == "uz":
-                await message.answer("📭 Sizda hozircha yozuvlar yo‘q.")
+                await message.answer(
+                    "📭 <b>Sizda hozircha yozuvlar yo‘q</b>\n\n"
+                    "✨ Yangi yozuv yaratish uchun \"Yozilish\" tugmasini bosing",
+                    parse_mode="HTML"
+                )
             else:
-                await message.answer("📭 У вас пока нет записей.")
+                await message.answer(
+                    "📭 <b>У вас пока нет записей</b>\n\n"
+                    "✨ Нажмите «Записаться», чтобы создать первую запись",
+                    parse_mode="HTML"
+                )
             return
 
-        # -------------------------------------------------
-        # ВЫВОД
-        # -------------------------------------------------
+        # =========================================
+        # ВЫВОД (КАРТОЧКИ)
+        # =========================================
         for a in user_appointments:
             try:
                 massage = a.get("massage", "—")
@@ -53,28 +63,39 @@ async def my_appointments(message: Message):
                 child = a.get("child_name", "—")
                 status = a.get("status", "—")
 
+                # 🎯 статус красивый
+                if status == "approved":
+                    status_text = "✅ Подтверждено"
+                elif status == "rejected":
+                    status_text = "❌ Отклонено"
+                elif status == "pending":
+                    status_text = "⏳ Ожидает"
+                else:
+                    status_text = status
+
                 if lang == "uz":
                     text = (
-                        "📅 <b>Yozuv</b>\n\n"
+                        "📅 <b>Yozuv tafsilotlari</b>\n\n"
                         f"💆 <b>Massaj:</b> {massage}\n"
                         f"🧑‍⚕️ <b>Mutaxassis:</b> {therapist}\n"
                         f"⏰ <b>Vaqt:</b> {dt}\n"
-                        f"👶 <b>Bola:</b> {child}\n"
-                        f"📌 <b>Holat:</b> {status}"
+                        f"👶 <b>Bola:</b> {child}\n\n"
+                        f"📌 <b>Holat:</b> {status_text}"
                     )
                 else:
                     text = (
-                        "📅 <b>Запись</b>\n\n"
+                        "📅 <b>Ваша запись</b>\n\n"
                         f"💆 <b>Массаж:</b> {massage}\n"
-                        f"🧑‍⚕️ <b>Массажист:</b> {therapist}\n"
-                        f"⏰ <b>Время:</b> {dt}\n"
-                        f"👶 <b>Ребёнок:</b> {child}\n"
-                        f"📌 <b>Статус:</b> {status}"
+                        f"🧑‍⚕️ <b>Специалист:</b> {therapist}\n"
+                        f"⏰ <b>Дата и время:</b> {dt}\n"
+                        f"👶 <b>Ребёнок:</b> {child}\n\n"
+                        f"📌 <b>Статус:</b> {status_text}"
                     )
 
                 await message.answer(text, parse_mode="HTML")
 
-            except:
+            except Exception as e:
+                notify_error(e)
                 continue
 
     except Exception as e:
