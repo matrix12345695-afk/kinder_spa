@@ -55,6 +55,9 @@ async def start(message: Message, state: FSMContext):
         user_id = message.from_user.id
         lang = get_user_lang(user_id)
 
+        # 🔥 лог для дебага (если /start не работает)
+        print(f"START user={user_id} lang={lang}")
+
         if lang not in ["ru", "uz"]:
             set_user_lang(user_id, "ru")
 
@@ -67,7 +70,8 @@ async def start(message: Message, state: FSMContext):
 
         await send_welcome(message, lang)
 
-    except Exception:
+    except Exception as e:
+        print("START ERROR:", e)
         await message.answer("⚠️ Ошибка запуска. Попробуйте позже.")
 
 
@@ -89,7 +93,8 @@ async def choose_language(cb: CallbackQuery, state: FSMContext):
 
         await send_welcome(cb.message, lang)
 
-    except:
+    except Exception as e:
+        print("LANG ERROR:", e)
         await cb.message.answer("⚠️ Ошибка выбора языка")
 
 
@@ -152,10 +157,12 @@ async def open_booking(cb: CallbackQuery, state: FSMContext):
                     parse_mode="HTML"
                 )
 
-            except:
+            except Exception as e:
+                print("MASSAGE ERROR:", e)
                 continue
 
-    except:
+    except Exception as e:
+        print("BOOKING ERROR:", e)
         await cb.message.answer("⚠️ Ошибка загрузки услуг")
 
 
@@ -185,5 +192,6 @@ async def send_welcome(message: Message, lang: str):
             parse_mode="HTML"
         )
 
-    except:
+    except Exception as e:
+        print("WELCOME ERROR:", e)
         await message.answer("👋 Добро пожаловать!")
