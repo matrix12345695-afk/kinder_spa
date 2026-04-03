@@ -27,16 +27,6 @@ def safe_int(value, default=0):
         return default
 
 
-# 🔥 ДОБАВЛЕНО: нормализация телефона
-def normalize_phone(phone: str):
-    phone = phone.replace(" ", "").replace("-", "")
-    if not phone.startswith("+"):
-        return None
-    if len(phone) < 10:
-        return None
-    return phone
-
-
 CACHE_TTL = 60
 free_times_cache = {}
 
@@ -81,7 +71,7 @@ async def cached_free_times(therapist_id, date_str, duration):
 async def build_calendar(year, month, therapist_id, duration):
     kb = InlineKeyboardMarkup(inline_keyboard=[])
     today = date.today()
-    max_date = today + timedelta(days=30)
+    max_date = today + timedelta(days=30)  # 🔥 добавлено ограничение
 
     kb.inline_keyboard.append([
         InlineKeyboardButton(
@@ -118,6 +108,7 @@ async def build_calendar(year, month, therapist_id, duration):
 
             d = date(year, month, day)
 
+            # 🔥 добавлено ограничение диапазона
             if d < today or d > max_date:
                 row.append(InlineKeyboardButton(text="❌", callback_data="ignore"))
                 continue
@@ -262,13 +253,8 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 async def choose_date(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
-    data = await state.get_data()
-    if not data:
-        await state.clear()
-        await cb.message.answer("⚠️ Сессия сброшена. Начните заново /start")
-        return
-
     selected_date = cb.data.replace("date_", "")
+    data = await state.get_data()
 
     times = await cached_free_times(
         data.get("therapist_id"),
@@ -353,19 +339,9 @@ async def age(message: Message, state: FSMContext):
 async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
         data = await state.get_data()
-
-        if not data:
-            await state.clear()
-            await message.answer("⚠️ Сессия сброшена. Начните заново /start")
-            return
-
-        phone = normalize_phone(phone)
-        if not phone:
-            await message.answer("❌ Неверный формат номера\nПример: +998901234567")
-            return
-
         dt = f"{data.get('date')} {data.get('time')}"
 
+        # 🔥 защита от дублей
         try:
             ss = get_spreadsheet()
             ws = ss.worksheet("appointments")

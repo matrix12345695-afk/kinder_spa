@@ -3,7 +3,6 @@ import logging
 import traceback
 import os
 import aiohttp
-import time  # 🔥 добавлено
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -19,9 +18,6 @@ dp = Dispatcher(storage=MemoryStorage())
 app = FastAPI()
 
 OPERATOR_ID = 8752273443
-
-# 🔥 анти-спам
-USER_LAST_ACTION = {}
 
 
 # =========================================
@@ -73,12 +69,12 @@ admin = safe_import("handlers.admin")
 # sheets
 sheets = safe_import("sheets")
 
-# cache
+# 🔥 ДОБАВЛЕН cache
 cache = safe_import("cache")
 
 
 # =========================================
-# 🔥 PRELOAD DATA
+# 🔥 PRELOAD DATA (ускорение)
 # =========================================
 
 async def preload_data():
@@ -129,7 +125,7 @@ except Exception as e:
 
 
 # =========================================
-# ERROR REPORT
+# ERROR REPORT (В ТЕЛЕГУ ОПЕРАТОРУ)
 # =========================================
 
 async def notify_error(e: Exception):
@@ -150,18 +146,7 @@ async def notify_error(e: Exception):
 
 
 # =========================================
-# 🔥 ОБРАБОТКА UPDATE С ЗАЩИТОЙ
-# =========================================
-
-async def process_update(update):
-    try:
-        await dp.feed_update(bot=BOT, update=update)
-    except Exception as e:
-        await notify_error(e)
-
-
-# =========================================
-# WEBHOOK
+# WEBHOOK (🔥 УСКОРЕННЫЙ)
 # =========================================
 
 @app.post("/webhook")
@@ -169,24 +154,12 @@ async def webhook(request: Request):
     try:
         data = await request.json()
 
-        # 🔥 анти-спам
-        user_id = data.get("message", {}).get("from", {}).get("id")
-
-        if user_id:
-            now = time.time()
-            last = USER_LAST_ACTION.get(user_id, 0)
-
-            if now - last < 0.5:
-                return {"ok": True}
-
-            USER_LAST_ACTION[user_id] = now
-
         try:
             update = types.Update.model_validate(data)
         except Exception:
             update = types.Update(**data)
 
-        asyncio.create_task(process_update(update))
+        asyncio.create_task(dp.feed_update(bot=BOT, update=update))
 
         return {"ok": True}
 
@@ -196,7 +169,7 @@ async def webhook(request: Request):
 
 
 # =========================================
-# HEALTH
+# HEALTH (для Render)
 # =========================================
 
 @app.get("/")
@@ -220,15 +193,15 @@ async def on_startup():
     except Exception as e:
         await notify_error(e)
 
-    # preload
+    # 🔥 preload
     asyncio.create_task(preload_data())
 
-    # cache
+    # 🔥 cache загрузка и автообновление
     if cache and sheets:
         await asyncio.to_thread(cache.load_all_data, sheets)
         asyncio.create_task(cache.auto_update(sheets))
 
-    # self ping
+    # 🔥 self ping
     asyncio.create_task(self_ping())
 
 
