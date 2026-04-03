@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import traceback
-import os
 import aiohttp
 
 from fastapi import FastAPI, Request
@@ -21,41 +20,13 @@ OPERATOR_ID = 8752273443
 
 
 # =========================================
-# SELF PING 🔥 (НЕ ДАЁТ RENDER СПАТЬ)
-# =========================================
-
-async def self_ping():
-    await asyncio.sleep(10)
-
-    url = WEBHOOK_URL
-
-    while True:
-        try:
-            timeout = aiohttp.ClientTimeout(total=10)
-
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as resp:
-                    logging.info(f"Ping status: {resp.status}")
-
-        except Exception as e:
-            logging.warning(f"Self ping failed: {e}")
-
-        await asyncio.sleep(240)
-
-
-# =========================================
-# DEBUG IMPORT SYSTEM 🔥
+# SAFE IMPORT (ЖЁСТКИЙ)
 # =========================================
 
 def safe_import(name):
-    try:
-        module = __import__(name, fromlist=["*"])
-        print(f"✅ {name} OK")
-        return module
-    except Exception as e:
-        print(f"❌ ERROR importing {name}: {e}")
-        traceback.print_exc()
-        return None
+    module = __import__(name, fromlist=["*"])
+    logging.info(f"✅ {name} loaded")
+    return module
 
 
 # handlers
@@ -69,63 +40,24 @@ admin = safe_import("handlers.admin")
 # sheets
 sheets = safe_import("sheets")
 
-# 🔥 ДОБАВЛЕН cache
+# cache
 cache = safe_import("cache")
 
 
 # =========================================
-# 🔥 PRELOAD DATA (ускорение)
+# ROUTERS
 # =========================================
 
-async def preload_data():
-    try:
-        if not sheets:
-            return
-
-        print("⚡ Preloading data...")
-
-        loop = asyncio.get_event_loop()
-
-        await loop.run_in_executor(None, sheets.get_active_masses)
-        await loop.run_in_executor(None, lambda: sheets.get_therapists_for_massage(1))
-        await loop.run_in_executor(None, sheets.get_all_appointments_full)
-
-        print("✅ Data preloaded")
-
-    except Exception as e:
-        await notify_error(e)
+dp.include_router(start.router)
+dp.include_router(booking.router)
+dp.include_router(contacts.router)
+dp.include_router(my_appointments.router)
+dp.include_router(operator_appointments.router)
+dp.include_router(admin.router)
 
 
 # =========================================
-# ROUTERS SAFE
-# =========================================
-
-try:
-    if start and hasattr(start, "router"):
-        dp.include_router(start.router)
-
-    if booking and hasattr(booking, "router"):
-        dp.include_router(booking.router)
-
-    if contacts and hasattr(contacts, "router"):
-        dp.include_router(contacts.router)
-
-    if my_appointments and hasattr(my_appointments, "router"):
-        dp.include_router(my_appointments.router)
-
-    if operator_appointments and hasattr(operator_appointments, "router"):
-        dp.include_router(operator_appointments.router)
-
-    if admin and hasattr(admin, "router"):
-        dp.include_router(admin.router)
-
-except Exception as e:
-    print("❌ ROUTER ERROR:", e)
-    traceback.print_exc()
-
-
-# =========================================
-# ERROR REPORT (В ТЕЛЕГУ ОПЕРАТОРУ)
+# ERROR REPORT
 # =========================================
 
 async def notify_error(e: Exception):
@@ -141,12 +73,49 @@ async def notify_error(e: Exception):
 
     try:
         await BOT.send_message(OPERATOR_ID, text, parse_mode="HTML")
-    except Exception:
-        pass
+    except Exception as send_error:
+        logging.error(f"Failed to send error message: {send_error}")
 
 
 # =========================================
-# WEBHOOK (🔥 УСКОРЕННЫЙ)
+# SELF PING
+# =========================================
+
+async def self_ping():
+    await asyncio.sleep(10)
+
+    while True:
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+                async with session.get(WEBHOOK_URL) as resp:
+                    logging.info(f"Ping status: {resp.status}")
+
+        except Exception as e:
+            logging.warning(f"Self ping failed: {e}")
+
+        await asyncio.sleep(300)
+
+
+# =========================================
+# PRELOAD DATA
+# =========================================
+
+async def preload_data():
+    try:
+        logging.info("⚡ Preloading data...")
+
+        await asyncio.to_thread(sheets.get_active_masses)
+        await asyncio.to_thread(lambda: sheets.get_therapists_for_massage(1))
+        await asyncio.to_thread(sheets.get_all_appointments_full)
+
+        logging.info("✅ Data preloaded")
+
+    except Exception as e:
+        await notify_error(e)
+
+
+# =========================================
+# WEBHOOK
 # =========================================
 
 @app.post("/webhook")
@@ -154,12 +123,9 @@ async def webhook(request: Request):
     try:
         data = await request.json()
 
-        try:
-            update = types.Update.model_validate(data)
-        except Exception:
-            update = types.Update(**data)
+        update = types.Update.model_validate(data)
 
-        asyncio.create_task(dp.feed_update(bot=BOT, update=update))
+        await dp.feed_update(bot=BOT, update=update)
 
         return {"ok": True}
 
@@ -169,7 +135,7 @@ async def webhook(request: Request):
 
 
 # =========================================
-# HEALTH (для Render)
+# HEALTH
 # =========================================
 
 @app.get("/")
@@ -183,25 +149,22 @@ async def root():
 
 @app.on_event("startup")
 async def on_startup():
-    print("🚀 START BOT")
+    logging.info("🚀 START BOT")
 
     await asyncio.sleep(2)
 
     try:
         await BOT.set_webhook(WEBHOOK_URL + "/webhook")
-        print("✅ Webhook set")
+        logging.info("✅ Webhook set")
     except Exception as e:
         await notify_error(e)
 
-    # 🔥 preload
     asyncio.create_task(preload_data())
 
-    # 🔥 cache загрузка и автообновление
-    if cache and sheets:
+    if cache:
         await asyncio.to_thread(cache.load_all_data, sheets)
         asyncio.create_task(cache.auto_update(sheets))
 
-    # 🔥 self ping
     asyncio.create_task(self_ping())
 
 
@@ -214,5 +177,5 @@ async def on_shutdown():
     try:
         await BOT.delete_webhook()
         await BOT.session.close()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.error(f"Shutdown error: {e}")
