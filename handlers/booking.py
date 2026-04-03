@@ -13,15 +13,13 @@ from sheets import (
     get_free_times,
     create_appointment,
     notify_error,
+    get_spreadsheet
 )
 
 router = Router()
 OPERATOR_ID = 8752273443
 
 
-# =========================================
-# HELPERS
-# =========================================
 def safe_int(value, default=0):
     try:
         return int(value)
@@ -29,9 +27,6 @@ def safe_int(value, default=0):
         return default
 
 
-# =========================================
-# CACHE
-# =========================================
 CACHE_TTL = 60
 free_times_cache = {}
 
@@ -71,7 +66,7 @@ async def cached_free_times(therapist_id, date_str, duration):
 
 
 # =========================================
-# CALENDAR
+# 🔥 КАЛЕНДАРЬ С ГРАФИКОМ
 # =========================================
 async def build_calendar(year, month, therapist_id, duration):
     kb = InlineKeyboardMarkup(inline_keyboard=[])
@@ -83,6 +78,24 @@ async def build_calendar(year, month, therapist_id, duration):
             callback_data="ignore"
         )
     ])
+
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(text=d, callback_data="ignore")
+        for d in ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+    ])
+
+    # 🔥 получаем график
+    schedule_days = []
+    try:
+        ss = get_spreadsheet()
+        ws = ss.worksheet("schedule")
+        rows = ws.get_all_records()
+
+        for r in rows:
+            if safe_int(r.get("therapist_id")) == therapist_id:
+                schedule_days.append(safe_int(r.get("weekday")))
+    except Exception as e:
+        notify_error(e)
 
     cal = calendar.monthcalendar(year, month)
 
@@ -99,6 +112,13 @@ async def build_calendar(year, month, therapist_id, duration):
                 row.append(InlineKeyboardButton(text="❌", callback_data="ignore"))
                 continue
 
+            weekday = d.weekday() + 1
+
+            # 🔒 нет в расписании
+            if weekday not in schedule_days:
+                row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
+                continue
+
             times = await cached_free_times(
                 therapist_id,
                 d.isoformat(),
@@ -109,17 +129,36 @@ async def build_calendar(year, month, therapist_id, duration):
                 row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
             else:
                 row.append(InlineKeyboardButton(
-                    text=f"{day}",
+                    text=f"🔵 {day}",
                     callback_data=f"date_{d.isoformat()}"
                 ))
 
         kb.inline_keyboard.append(row)
 
+    # 🔥 перелистывание месяцев
+    prev_month = month - 1
+    next_month = month + 1
+    prev_year = year
+    next_year = year
+
+    if prev_month == 0:
+        prev_month = 12
+        prev_year -= 1
+
+    if next_month == 13:
+        next_month = 1
+        next_year += 1
+
+    kb.inline_keyboard.append([
+        InlineKeyboardButton(text="⬅️", callback_data=f"cal_{prev_year}_{prev_month}_{therapist_id}"),
+        InlineKeyboardButton(text="➡️", callback_data=f"cal_{next_year}_{next_month}_{therapist_id}")
+    ])
+
     return kb
 
 
 # =========================================
-# STATES
+# СТЕЙТЫ
 # =========================================
 class BookingState(StatesGroup):
     massage = State()
@@ -130,6 +169,31 @@ class BookingState(StatesGroup):
     child = State()
     child_age = State()
     phone = State()
+
+
+# =========================================
+# ПЕРЕЛИСТЫВАНИЕ МЕСЯЦА
+# =========================================
+@router.callback_query(F.data.startswith("cal_"))
+async def change_month(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+
+    _, year, month, therapist_id = cb.data.split("_")
+
+    year = int(year)
+    month = int(month)
+    therapist_id = int(therapist_id)
+
+    data = await state.get_data()
+
+    kb = await build_calendar(
+        year,
+        month,
+        therapist_id,
+        data.get("massage_duration", 30)
+    )
+
+    await cb.message.edit_reply_markup(reply_markup=kb)
 
 
 # =========================================
@@ -181,9 +245,15 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await state.update_data(therapist_id=therapist_id)
     await state.set_state(BookingState.date)
 
+    data = await state.get_data()
     now = datetime.now()
 
-    kb = await build_calendar(now.year, now.month, therapist_id, 30)
+    kb = await build_calendar(
+        now.year,
+        now.month,
+        therapist_id,
+        data.get("massage_duration", 30)
+    )
 
     await cb.message.answer(
         "📅 <b>Выберите дату</b>",
@@ -193,7 +263,7 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# DATE → TIME
+# ДАЛЬШЕ ТВОЙ КОД БЕЗ ИЗМЕНЕНИЙ
 # =========================================
 @router.callback_query(BookingState.date, F.data.startswith("date_"))
 async def choose_date(cb: CallbackQuery, state: FSMContext):
@@ -225,9 +295,6 @@ async def choose_date(cb: CallbackQuery, state: FSMContext):
     await cb.message.answer("⏰ <b>Выберите время</b>", reply_markup=kb, parse_mode="HTML")
 
 
-# =========================================
-# TIME → PARENT
-# =========================================
 @router.callback_query(BookingState.time, F.data.startswith("time_"))
 async def choose_time(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
@@ -238,9 +305,6 @@ async def choose_time(cb: CallbackQuery, state: FSMContext):
     await cb.message.answer("👩 <b>Имя родителя:</b>", parse_mode="HTML")
 
 
-# =========================================
-# INPUT FLOW
-# =========================================
 @router.message(BookingState.parent)
 async def parent(message: Message, state: FSMContext):
     await state.update_data(parent_name=message.text)
@@ -288,9 +352,6 @@ async def age(message: Message, state: FSMContext):
     )
 
 
-# =========================================
-# SAVE LOGIC
-# =========================================
 async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
         data = await state.get_data()
