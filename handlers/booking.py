@@ -83,7 +83,7 @@ async def start_booking(message: Message, state: FSMContext):
             f"💰 {m.get('price')} сум"
         )
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[[  
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
                 text="Выбрать",
                 callback_data=f"massage_{m.get('id')}"
@@ -139,7 +139,7 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
             f"📝 {t.get('description') or 'Опытный специалист'}"
         )
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[[  
+        kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="✨ Выбрать", callback_data=f"therapist_{t.get('id')}")
         ]])
 
@@ -251,20 +251,12 @@ async def age(message: Message, state: FSMContext):
     await state.set_state(BookingState.phone)
 
     kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📱 Отправить номер", request_contact=True)]
-        ],
+        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
         resize_keyboard=True
     )
 
-    # 💥 ВАЖНО: сначала сообщение БЕЗ клавы
     await message.answer("📞 Введите номер или нажмите кнопку ниже 👇")
-
-    # 💥 потом ОТДЕЛЬНО сообщение С клавой
-    await message.answer(
-        "👇 Отправить номер:",
-        reply_markup=kb
-    )
+    await message.answer("👇 Отправить номер:", reply_markup=kb)
 
 
 # =========================================
@@ -308,15 +300,12 @@ async def phone_contact(message: Message, state: FSMContext):
     await save_booking(message, state, message.contact.phone_number)
 
 
-@router.message(BookingState.phone, F.text)
+# ❗ ВАЖНО: убрали F.text фильтр
+@router.message(BookingState.phone)
 async def phone_text(message: Message, state: FSMContext):
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-        resize_keyboard=True,
-        is_persistent=True
+        resize_keyboard=True
     )
 
-    await message.answer(
-        "❌ Нажмите кнопку ниже 👇",
-        reply_markup=kb
-    )
+    await message.answer("❌ Нажмите кнопку ниже 👇", reply_markup=kb)
