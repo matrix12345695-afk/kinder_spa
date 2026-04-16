@@ -142,6 +142,21 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
+# ADMINS (🔥 ДОБАВЛЕНО)
+# =====================================================
+
+def get_admin_role(user_id: int):
+    try:
+        for r in get_records("admins"):
+            if str(r.get("user_id")) == str(user_id):
+                return r.get("role")
+        return None
+    except Exception as e:
+        notify_error(e)
+        return None
+
+
+# =====================================================
 # MASSES
 # =====================================================
 
@@ -169,7 +184,7 @@ def get_massage_name(massage_id: int):
 
 
 # =====================================================
-# THERAPISTS (🔥 ДОБАВЛЕНО)
+# THERAPISTS
 # =====================================================
 
 def get_therapists_for_massage(massage_id: int):
