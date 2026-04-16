@@ -248,11 +248,10 @@ async def age(message: Message, state: FSMContext):
     await state.set_state(BookingState.phone)
 
     kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-        selective=True
-    )
+    keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+    resize_keyboard=True,
+    one_time_keyboard=True
+)
 
     # 💥 УДАЛЯЕМ старую клавиатуру
     await message.answer("📞 Подготовка...", reply_markup=ReplyKeyboardRemove())
