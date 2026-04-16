@@ -160,7 +160,7 @@ def get_admin_role(user_id: int):
 # MASSES
 # =====================================================
 
-def get_active_masses():
+def get_active_masses(lang=None):
     try:
         return [
             {
