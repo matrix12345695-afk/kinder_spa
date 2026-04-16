@@ -65,7 +65,7 @@ async def cached_free_times(therapist_id, date_str, duration):
 
 
 # =========================================
-# 🔥 СТАРТ ЗАПИСИ (НОВОЕ)
+# СТАРТ ЗАПИСИ
 # =========================================
 
 @router.message(F.text == "📋 Записаться")
@@ -80,7 +80,7 @@ async def start_booking(message: Message, state: FSMContext):
         text = (
             f"🧸 <b>{m.get('name')}</b>\n"
             f"⏱ {m.get('duration')} мин\n"
-            f"💰 {m.get('price') or 'уточняйте'} сум"
+            f"💰 {m.get('price')} сум"
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=[[  
@@ -93,81 +93,6 @@ async def start_booking(message: Message, state: FSMContext):
         await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
     await state.set_state(BookingState.massage)
-
-
-# =========================================
-# КАЛЕНДАРЬ
-# =========================================
-
-async def get_schedule_days(therapist_id):
-    try:
-        ss = get_spreadsheet()
-        ws = ss.worksheet("schedule")
-        rows = ws.get_all_records()
-
-        return [
-            safe_int(r.get("weekday"))
-            for r in rows
-            if safe_int(r.get("therapist_id")) == therapist_id
-        ]
-    except Exception as e:
-        await notify_error(e)
-        return []
-
-
-async def build_calendar(year, month, therapist_id, duration):
-    kb = InlineKeyboardMarkup(inline_keyboard=[])
-    today = date.today()
-    max_date = today + timedelta(days=30)
-
-    schedule_days = await get_schedule_days(therapist_id)
-
-    kb.inline_keyboard.append([
-        InlineKeyboardButton(
-            text=f"📅 {calendar.month_name[month]} {year}",
-            callback_data="ignore"
-        )
-    ])
-
-    kb.inline_keyboard.append([
-        InlineKeyboardButton(text=d, callback_data="ignore")
-        for d in ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
-    ])
-
-    cal = calendar.monthcalendar(year, month)
-
-    for week in cal:
-        row = []
-        for day in week:
-            if day == 0:
-                row.append(InlineKeyboardButton(text=" ", callback_data="ignore"))
-                continue
-
-            d = date(year, month, day)
-
-            if d < today or d > max_date:
-                row.append(InlineKeyboardButton(text="❌", callback_data="ignore"))
-                continue
-
-            weekday = d.weekday() + 1
-
-            if weekday not in schedule_days:
-                row.append(InlineKeyboardButton(text=f"{day} 🔒", callback_data="ignore"))
-                continue
-
-            row.append(InlineKeyboardButton(
-                text=f"🔵 {day}",
-                callback_data=f"date_{d.isoformat()}"
-            ))
-
-        kb.inline_keyboard.append(row)
-
-    kb.inline_keyboard.append([
-        InlineKeyboardButton(text="⬅️", callback_data=f"cal_{year}_{month-1}_{therapist_id}"),
-        InlineKeyboardButton(text="➡️", callback_data=f"cal_{year}_{month+1}_{therapist_id}")
-    ])
-
-    return kb
 
 
 # =========================================
@@ -208,19 +133,21 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
     await state.set_state(BookingState.therapist)
 
     for t in therapists:
+        text = (
+            f"👩‍⚕️ <b>{t.get('name')}</b>\n\n"
+            f"📅 Стаж: {t.get('experience') or 'не указан'}\n"
+            f"📝 {t.get('description') or 'Опытный специалист'}"
+        )
+
         kb = InlineKeyboardMarkup(inline_keyboard=[[  
             InlineKeyboardButton(text="✨ Выбрать", callback_data=f"therapist_{t.get('id')}")
         ]])
 
-        await cb.message.answer(
-            f"👩‍⚕️ <b>{t.get('name')}</b>\n🧠 Опыт: {t.get('experience', '—')}",
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
+        await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 # =========================================
-# ДАЛЕЕ БЕЗ ИЗМЕНЕНИЙ
+# ДАТА / ВРЕМЯ
 # =========================================
 
 @router.callback_query(F.data.startswith("therapist_"))
@@ -233,7 +160,6 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await state.set_state(BookingState.date)
 
     now = datetime.now()
-
     data = await state.get_data()
 
     kb = await build_calendar(
@@ -243,11 +169,7 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
         data.get("massage_duration", 30)
     )
 
-    await cb.message.answer(
-        "📅 <b>Выберите дату</b>",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
+    await cb.message.answer("📅 <b>Выберите дату</b>", reply_markup=kb, parse_mode="HTML")
 
 
 @router.callback_query(BookingState.date, F.data.startswith("date_"))
@@ -326,11 +248,16 @@ async def age(message: Message, state: FSMContext):
 
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-        resize_keyboard=True
+        resize_keyboard=True,
+        one_time_keyboard=True
     )
 
-    await message.answer("📞 Введите номер телефона", reply_markup=kb)
+    await message.answer("📞 Отправьте номер телефона:", reply_markup=kb)
 
+
+# =========================================
+# СОХРАНЕНИЕ
+# =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
@@ -349,7 +276,10 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         )
 
         await message.answer(
-            "🎉 <b>Вы успешно записаны!</b>",
+            "🎉 <b>Ваша заявка принята!</b>\n\n"
+            "📅 Мы уже записали вас\n"
+            "📞 Скоро с вами свяжется администратор\n\n"
+            "💚 Спасибо за выбор Kinder Spa!",
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="HTML"
         )
