@@ -5,20 +5,12 @@ from aiogram.filters import Command
 from sheets import (
     get_admin_role,
     update_appointment_status,
-    get_spreadsheet,
+    get_all_appointments_full,
     get_massage_name,
-    get_therapist_name,
     notify_error
 )
 
 router = Router()
-
-
-def safe_int(value, default=0):
-    try:
-        return int(value)
-    except:
-        return default
 
 
 # =========================
@@ -27,7 +19,7 @@ def safe_int(value, default=0):
 def admin_menu():
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📋 Все записи", callback_data="admin_all")],
+            [InlineKeyboardButton(text="📋 Все записи", callback_data="admin_all")]
         ]
     )
 
@@ -38,15 +30,14 @@ def admin_menu():
 @router.message(Command("admin"))
 async def admin_panel(message: Message):
     try:
-        role = get_admin_role(message.from_user.id)
-
-        if role != "admin":
+        if get_admin_role(message.from_user.id) != "admin":
             await message.answer("⛔ У вас нет доступа")
             return
 
         await message.answer(
-            "🛠 Админ-панель\nВыберите действие:",
-            reply_markup=admin_menu()
+            "🛠 <b>Админ-панель</b>\nВыберите действие:",
+            reply_markup=admin_menu(),
+            parse_mode="HTML"
         )
 
     except Exception as e:
@@ -55,52 +46,48 @@ async def admin_panel(message: Message):
 
 
 # =========================
-# ALL APPOINTMENTS
+# ВСЕ ЗАПИСИ
 # =========================
 @router.callback_query(F.data == "admin_all")
 async def admin_all(cb: CallbackQuery):
     try:
         await cb.answer()
 
-        role = get_admin_role(cb.from_user.id)
-        if role != "admin":
+        if get_admin_role(cb.from_user.id) != "admin":
             await cb.answer("Нет доступа", show_alert=True)
             return
 
-        ss = get_spreadsheet()
-        if not ss:
-            await cb.message.answer("❌ Ошибка подключения к таблице")
-            return
-
-        try:
-            ws = ss.worksheet("appointments")
-            rows = ws.get_all_records()
-        except Exception as e:
-            notify_error(e)
-            await cb.message.answer("❌ Ошибка чтения таблицы")
-            return
+        rows = get_all_appointments_full()
 
         if not rows:
-            await cb.message.answer("Записей нет")
+            await cb.message.answer("📭 Записей нет")
             return
 
-        limit = 30
+        rows = sorted(
+            rows,
+            key=lambda x: x.get("datetime", ""),
+            reverse=True
+        )
 
-        for idx, r in enumerate(rows[:limit], start=2):
+        for r in rows[:30]:
             try:
-                massage = get_massage_name(safe_int(r.get("massage_id")))
-                therapist = get_therapist_name(safe_int(r.get("therapist_id")))
+                massage = get_massage_name(int(r.get("massage_id", 0)))
+                dt = r.get("datetime", "—")
+                parent = r.get("parent_name", "—")
+                child = r.get("child_name", "—")
+                phone = r.get("phone", "—")
+                status = r.get("status", "NEW")
+
+                appointment_id = r.get("appointment_id")
 
                 text = (
-                    f"🆔 {idx}\n"
-                    f"💆 {massage}\n"
-                    f"🧑‍⚕️ {therapist}\n"
-                    f"📅 {r.get('datetime', '—')}\n"
-                    f"👩 {r.get('parent_name', '—')}\n"
-                    f"🧸 {r.get('child_name', '—')}\n"
-                    f"📊 {r.get('child_age', '—')} мес\n"
-                    f"📞 {r.get('phone', '—')}\n"
-                    f"🏷 Статус: {r.get('status', '—')}"
+                    f"🧾 <b>Запись</b>\n\n"
+                    f"💆 <b>Услуга:</b> {massage}\n"
+                    f"📅 <b>Дата:</b> {dt}\n"
+                    f"👩 <b>Родитель:</b> {parent}\n"
+                    f"🧸 <b>Ребёнок:</b> {child}\n"
+                    f"📞 <b>Телефон:</b> {phone}\n"
+                    f"📌 <b>Статус:</b> {status}"
                 )
 
                 kb = InlineKeyboardMarkup(
@@ -108,23 +95,23 @@ async def admin_all(cb: CallbackQuery):
                         [
                             InlineKeyboardButton(
                                 text="✅ Подтвердить",
-                                callback_data=f"admin_confirm_{idx}"
+                                callback_data=f"admin_confirm_{appointment_id}"
                             ),
                             InlineKeyboardButton(
                                 text="🏁 Завершить",
-                                callback_data=f"admin_done_{idx}"
+                                callback_data=f"admin_done_{appointment_id}"
                             ),
                         ],
                         [
                             InlineKeyboardButton(
                                 text="❌ Отменить",
-                                callback_data=f"admin_cancel_{idx}"
+                                callback_data=f"admin_cancel_{appointment_id}"
                             )
                         ]
                     ]
                 )
 
-                await cb.message.answer(text, reply_markup=kb)
+                await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
 
             except Exception as e:
                 notify_error(e)
@@ -135,144 +122,66 @@ async def admin_all(cb: CallbackQuery):
 
 
 # =========================
-# CONFIRM
+# ОБНОВЛЕНИЕ СТАТУСА (УНИВЕРСАЛ)
+# =========================
+async def change_status(cb: CallbackQuery, new_status: str, success_text: str):
+    try:
+        await cb.answer(success_text)
+
+        if get_admin_role(cb.from_user.id) != "admin":
+            return
+
+        appointment_id = cb.data.split("_")[-1]
+
+        rows = get_all_appointments_full()
+
+        for index, r in enumerate(rows, start=2):
+            if str(r.get("appointment_id")) == str(appointment_id):
+
+                update_appointment_status(index, new_status)
+
+                user_id = int(r.get("user_id", 0))
+
+                # уведомление клиенту
+                if user_id:
+                    try:
+                        messages = {
+                            "CONFIRMED": "✅ Ваша запись подтверждена!\nЖдём вас 💚",
+                            "DONE": "🏁 Процедура завершена.\nСпасибо за визит 💚",
+                            "CANCELLED": "❌ Ваша запись отменена.\nСвяжитесь с нами."
+                        }
+
+                        await cb.bot.send_message(user_id, messages.get(new_status, "Статус обновлён"))
+                    except Exception as e:
+                        notify_error(e)
+
+                try:
+                    await cb.message.edit_text(
+                        cb.message.text + f"\n\n<b>{new_status}</b>",
+                        parse_mode="HTML"
+                    )
+                except:
+                    pass
+
+                return
+
+    except Exception as e:
+        notify_error(e)
+
+
+# =========================
+# CALLBACKS
 # =========================
 @router.callback_query(F.data.startswith("admin_confirm_"))
 async def admin_confirm(cb: CallbackQuery):
-    try:
-        await cb.answer("Подтверждено ✅")
-
-        if get_admin_role(cb.from_user.id) != "admin":
-            return
-
-        row = safe_int(cb.data.split("_")[-1])
-
-        ss = get_spreadsheet()
-        if not ss:
-            return
-
-        ws = ss.worksheet("appointments")
-
-        try:
-            record = ws.row_values(row)
-            user_id = safe_int(record[0])
-        except:
-            user_id = None
-
-        update_appointment_status(row, "confirmed")
-
-        if user_id:
-            try:
-                await cb.bot.send_message(
-                    user_id,
-                    "✅ Ваша запись подтверждена!\nЖдём вас 💚"
-                )
-            except Exception as e:
-                notify_error(e)
-
-        try:
-            await cb.message.edit_text(
-                cb.message.text + "\n\n✅ <b>ПОДТВЕРЖДЕНО</b>",
-                parse_mode="HTML"
-            )
-        except:
-            pass
-
-    except Exception as e:
-        notify_error(e)
+    await change_status(cb, "CONFIRMED", "Подтверждено ✅")
 
 
-# =========================
-# DONE
-# =========================
 @router.callback_query(F.data.startswith("admin_done_"))
 async def admin_done(cb: CallbackQuery):
-    try:
-        await cb.answer("Завершено 🏁")
-
-        if get_admin_role(cb.from_user.id) != "admin":
-            return
-
-        row = safe_int(cb.data.split("_")[-1])
-
-        ss = get_spreadsheet()
-        if not ss:
-            return
-
-        ws = ss.worksheet("appointments")
-
-        try:
-            record = ws.row_values(row)
-            user_id = safe_int(record[0])
-        except:
-            user_id = None
-
-        update_appointment_status(row, "done")
-
-        if user_id:
-            try:
-                await cb.bot.send_message(
-                    user_id,
-                    "🏁 Процедура завершена.\nСпасибо за визит 💚"
-                )
-            except Exception as e:
-                notify_error(e)
-
-        try:
-            await cb.message.edit_text(
-                cb.message.text + "\n\n🏁 <b>ЗАВЕРШЕНО</b>",
-                parse_mode="HTML"
-            )
-        except:
-            pass
-
-    except Exception as e:
-        notify_error(e)
+    await change_status(cb, "DONE", "Завершено 🏁")
 
 
-# =========================
-# CANCEL
-# =========================
 @router.callback_query(F.data.startswith("admin_cancel_"))
 async def admin_cancel(cb: CallbackQuery):
-    try:
-        await cb.answer("Отменено ❌")
-
-        if get_admin_role(cb.from_user.id) != "admin":
-            return
-
-        row = safe_int(cb.data.split("_")[-1])
-
-        ss = get_spreadsheet()
-        if not ss:
-            return
-
-        ws = ss.worksheet("appointments")
-
-        try:
-            record = ws.row_values(row)
-            user_id = safe_int(record[0])
-        except:
-            user_id = None
-
-        update_appointment_status(row, "cancelled")
-
-        if user_id:
-            try:
-                await cb.bot.send_message(
-                    user_id,
-                    "❌ Ваша запись отменена.\nСвяжитесь с нами для уточнения."
-                )
-            except Exception as e:
-                notify_error(e)
-
-        try:
-            await cb.message.edit_text(
-                cb.message.text + "\n\n❌ <b>ОТМЕНЕНО</b>",
-                parse_mode="HTML"
-            )
-        except:
-            pass
-
-    except Exception as e:
-        notify_error(e)
+    await change_status(cb, "CANCELLED", "Отменено ❌")
