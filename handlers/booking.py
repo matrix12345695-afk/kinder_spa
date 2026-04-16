@@ -235,6 +235,7 @@ def parse_age(text):
         return None
 
 
+# 🔥 ИСПРАВЛЕНО (КЛЮЧЕВОЙ БЛОК)
 @router.message(BookingState.child_age)
 async def age(message: Message, state: FSMContext):
     age = parse_age(message.text)
@@ -249,10 +250,18 @@ async def age(message: Message, state: FSMContext):
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
         resize_keyboard=True,
-        one_time_keyboard=True
+        one_time_keyboard=True,
+        selective=True
     )
 
-    await message.answer("📞 Отправьте номер телефона:", reply_markup=kb)
+    # убираем старую клаву
+    await message.answer("📞 Подготовка...", reply_markup=ReplyKeyboardRemove())
+
+    # показываем новую
+    await message.answer(
+        "📱 Нажмите кнопку ниже, чтобы отправить номер",
+        reply_markup=kb
+    )
 
 
 # =========================================
@@ -296,6 +305,7 @@ async def phone_contact(message: Message, state: FSMContext):
     await save_booking(message, state, message.contact.phone_number)
 
 
-@router.message(BookingState.phone)
+# 🔥 ИСПРАВЛЕНО (чтобы не ломал кнопку)
+@router.message(BookingState.phone, F.text)
 async def phone_text(message: Message, state: FSMContext):
     await save_booking(message, state, message.text)
