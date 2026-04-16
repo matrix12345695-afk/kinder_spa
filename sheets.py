@@ -162,15 +162,23 @@ def get_admin_role(user_id: int):
 
 def get_active_masses(lang=None):
     try:
-        return [
-            {
+        result = []
+
+        for r in get_records("masses"):
+            if str(r.get("active")).lower() != "true":
+                continue
+
+            result.append({
                 "id": int(r.get("id", 0)),
-                "name": r.get("name_ru"),
-                "duration": int(r.get("duration_min", 30))
-            }
-            for r in get_records("masses")
-            if str(r.get("active")).lower() == "true"
-        ]
+                "name": r.get("name_ru") if lang != "uz" else r.get("name_uz"),
+                "price": int(r.get("price", 0)),
+                "duration": int(r.get("duration_min", 30)),
+                "age_from": r.get("age_from"),
+                "age_to": r.get("age_to"),
+            })
+
+        return result
+
     except Exception as e:
         notify_error(e)
         return []
