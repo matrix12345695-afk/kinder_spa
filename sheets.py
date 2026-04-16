@@ -239,20 +239,17 @@ def create_appointment(
 ):
     ws = get_ws("appointments")
 
-    appointment_id = str(uuid.uuid4())[:8]
-
     row = [
-        appointment_id,
-        user_id,
-        massage_id,
-        therapist_id,
-        dt,
-        parent_name,
-        child_name,
-        child_age,
-        phone,
-        "NEW",
-        datetime.now().strftime("%Y-%m-%d %H:%M")
+        str(user_id),                               # A user_id
+        int(massage_id),                            # B massage_id
+        int(therapist_id),                          # C therapist_id
+        dt,                                         # D datetime
+        parent_name,                                # E parent_name
+        child_name,                                 # F child_name
+        int(child_age),                             # G child_age
+        phone,                                      # H phone
+        "NEW",                                      # I status
+        datetime.now().strftime("%Y-%m-%d %H:%M")    # J created_at
     ]
 
     ws.append_row(row)
