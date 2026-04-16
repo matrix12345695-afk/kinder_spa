@@ -308,4 +308,13 @@ async def phone_contact(message: Message, state: FSMContext):
 # 🔥 ИСПРАВЛЕНО (чтобы не ломал кнопку)
 @router.message(BookingState.phone, F.text)
 async def phone_text(message: Message, state: FSMContext):
-    await save_booking(message, state, message.text)
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    await message.answer(
+        "❌ Пожалуйста, используйте кнопку ниже 👇",
+        reply_markup=kb
+    )
