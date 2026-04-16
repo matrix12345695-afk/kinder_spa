@@ -142,8 +142,24 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
-# MASSAGES
+# MASSES (🔥 ДОБАВИЛИ)
 # =====================================================
+
+def get_active_masses():
+    try:
+        return [
+            {
+                "id": int(r.get("id", 0)),
+                "name": r.get("name_ru"),
+                "duration": int(r.get("duration_min", 30))
+            }
+            for r in get_records("masses")
+            if str(r.get("active")).lower() == "true"
+        ]
+    except Exception as e:
+        notify_error(e)
+        return []
+
 
 def get_massage_name(massage_id: int):
     for r in get_records("masses"):
