@@ -208,7 +208,13 @@ def get_therapists_for_massage(massage_id: int):
             if int(link.get("massage_id", 0)) == massage_id:
                 for t in therapists:
                     if int(t.get("id", 0)) == int(link.get("therapist_id", 0)):
-                        result.append(t)
+
+                        result.append({
+                            "id": t.get("id"),
+                            "name": t.get("name"),
+                            "experience": t.get("experience"),
+                            "description": t.get("description", "")
+                        })
 
         return result
 
