@@ -235,7 +235,10 @@ def parse_age(text):
         return None
 
 
-# 🔥 ИСПРАВЛЕНО (КЛЮЧЕВОЙ БЛОК)
+# =========================================
+# 🔥 ФИКС КНОПКИ ТЕЛЕФОНА
+# =========================================
+
 @router.message(BookingState.child_age)
 async def age(message: Message, state: FSMContext):
     age = parse_age(message.text)
@@ -248,18 +251,13 @@ async def age(message: Message, state: FSMContext):
     await state.set_state(BookingState.phone)
 
     kb = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-    resize_keyboard=True,
-    one_time_keyboard=True
-)
+        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
+        resize_keyboard=True,
+        is_persistent=True
+    )
 
-    # 💥 УДАЛЯЕМ старую клавиатуру
-    await message.answer("📞 Подготовка...", reply_markup=ReplyKeyboardRemove())
+    await asyncio.sleep(0.3)
 
-    # 💥 КРИТИЧЕСКАЯ ПАУЗА (фикс Telegram бага)
-    await asyncio.sleep(0.6)
-
-    # 💥 ПОКАЗЫВАЕМ КНОПКУ
     await message.answer(
         "📱 Нажмите кнопку ниже, чтобы отправить номер",
         reply_markup=kb
@@ -307,16 +305,15 @@ async def phone_contact(message: Message, state: FSMContext):
     await save_booking(message, state, message.contact.phone_number)
 
 
-# 🔥 ИСПРАВЛЕНО (чтобы не ломал кнопку)
 @router.message(BookingState.phone, F.text)
 async def phone_text(message: Message, state: FSMContext):
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
         resize_keyboard=True,
-        one_time_keyboard=True
+        is_persistent=True
     )
 
     await message.answer(
-        "❌ Пожалуйста, используйте кнопку ниже 👇",
+        "❌ Нажмите кнопку ниже 👇",
         reply_markup=kb
     )
