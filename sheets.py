@@ -142,7 +142,7 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
-# MASSES (🔥 ДОБАВИЛИ)
+# MASSES
 # =====================================================
 
 def get_active_masses():
@@ -166,6 +166,32 @@ def get_massage_name(massage_id: int):
         if int(r.get("id", 0)) == massage_id:
             return r.get("name_ru")
     return "Неизвестно"
+
+
+# =====================================================
+# THERAPISTS (🔥 ДОБАВЛЕНО)
+# =====================================================
+
+def get_therapists_for_massage(massage_id: int):
+    try:
+        ss = get_spreadsheet()
+
+        therapists = ss.worksheet("therapists").get_all_records()
+        links = ss.worksheet("therapist_masses").get_all_records()
+
+        result = []
+
+        for link in links:
+            if int(link.get("massage_id", 0)) == massage_id:
+                for t in therapists:
+                    if int(t.get("id", 0)) == int(link.get("therapist_id", 0)):
+                        result.append(t)
+
+        return result
+
+    except Exception as e:
+        notify_error(e)
+        return []
 
 
 # =====================================================
