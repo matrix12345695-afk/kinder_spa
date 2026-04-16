@@ -254,10 +254,13 @@ async def age(message: Message, state: FSMContext):
         selective=True
     )
 
-    # убираем старую клаву
+    # 💥 УДАЛЯЕМ старую клавиатуру
     await message.answer("📞 Подготовка...", reply_markup=ReplyKeyboardRemove())
 
-    # показываем новую
+    # 💥 КРИТИЧЕСКАЯ ПАУЗА (фикс Telegram бага)
+    await asyncio.sleep(0.6)
+
+    # 💥 ПОКАЗЫВАЕМ КНОПКУ
     await message.answer(
         "📱 Нажмите кнопку ниже, чтобы отправить номер",
         reply_markup=kb
