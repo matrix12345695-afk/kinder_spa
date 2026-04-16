@@ -58,25 +58,20 @@ def notify_error(e: Exception):
 # =====================================================
 
 def get_client():
-    try:
-        creds_dict = json.loads(GOOGLE_CREDENTIALS)
+    creds_dict = json.loads(GOOGLE_CREDENTIALS)
 
-        if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-        creds = Credentials.from_service_account_info(
-            creds_dict,
-            scopes=[
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-        )
+    creds = Credentials.from_service_account_info(
+        creds_dict,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+    )
 
-        return gspread.authorize(creds)
-
-    except Exception as e:
-        notify_error(e)
-        return None
+    return gspread.authorize(creds)
 
 
 def get_spreadsheet():
@@ -86,47 +81,27 @@ def get_spreadsheet():
         return _spreadsheet
 
     client = get_client()
-    if not client:
-        return None
-
-    try:
-        _spreadsheet = client.open_by_key(SPREADSHEET_NAME)
-        return _spreadsheet
-    except Exception as e:
-        notify_error(e)
-        return None
+    _spreadsheet = client.open_by_key(SPREADSHEET_NAME)
+    return _spreadsheet
 
 
 def get_ws(name):
-    try:
-        ss = get_spreadsheet()
-        return ss.worksheet(name) if ss else None
-    except Exception as e:
-        notify_error(e)
-        return None
+    return get_spreadsheet().worksheet(name)
 
 
 def get_records(name):
-    try:
-        now = time.time()
+    now = time.time()
 
-        if name in CACHE and now - CACHE_TIME[name] < CACHE_TTL:
-            return CACHE[name]
+    if name in CACHE and now - CACHE_TIME[name] < CACHE_TTL:
+        return CACHE[name]
 
-        ws = get_ws(name)
-        if not ws:
-            return []
+    ws = get_ws(name)
+    data = ws.get_all_records()
 
-        data = ws.get_all_records()
+    CACHE[name] = data
+    CACHE_TIME[name] = now
 
-        CACHE[name] = data
-        CACHE_TIME[name] = now
-
-        return data
-
-    except Exception as e:
-        notify_error(e)
-        return []
+    return data
 
 
 def clear_cache(name=None):
@@ -149,31 +124,36 @@ def get_user_lang(user_id: int):
     return "ru"
 
 
+def set_user_lang(user_id: int, lang: str):
+    try:
+        ws = get_ws("users")
+        records = get_records("users")
+
+        for i, r in enumerate(records, start=2):
+            if str(r.get("user_id")) == str(user_id):
+                ws.update_cell(i, 2, lang)
+                return
+
+        ws.append_row([user_id, lang])
+        clear_cache("users")
+
+    except Exception as e:
+        notify_error(e)
+
+
 # =====================================================
 # MASSAGES
 # =====================================================
 
-def get_active_masses():
-    return [
-        {
-            "id": int(r["id"]),
-            "name": r["name_ru"],
-            "duration": int(r.get("duration_min", 30))
-        }
-        for r in get_records("masses")
-        if str(r.get("active")).lower() == "true"
-    ]
-
-
 def get_massage_name(massage_id: int):
     for r in get_records("masses"):
-        if int(r["id"]) == massage_id:
-            return r["name_ru"]
+        if int(r.get("id", 0)) == massage_id:
+            return r.get("name_ru")
     return "Неизвестно"
 
 
 # =====================================================
-# APPOINTMENTS (🔥 ЯДРО)
+# APPOINTMENTS
 # =====================================================
 
 def create_appointment(
@@ -186,35 +166,28 @@ def create_appointment(
     therapist_id,
     dt
 ):
-    try:
-        ws = get_ws("appointments")
-        if not ws:
-            return False
+    ws = get_ws("appointments")
 
-        appointment_id = str(uuid.uuid4())[:8]
+    appointment_id = str(uuid.uuid4())[:8]
 
-        row = [
-            appointment_id,
-            user_id,
-            massage_id,
-            therapist_id,
-            dt,
-            parent_name,
-            child_name,
-            child_age,
-            phone,
-            "NEW",
-            datetime.now().strftime("%Y-%m-%d %H:%M")
-        ]
+    row = [
+        appointment_id,
+        user_id,
+        massage_id,
+        therapist_id,
+        dt,
+        parent_name,
+        child_name,
+        child_age,
+        phone,
+        "NEW",
+        datetime.now().strftime("%Y-%m-%d %H:%M")
+    ]
 
-        ws.append_row(row)
-        clear_cache("appointments")
+    ws.append_row(row)
+    clear_cache("appointments")
 
-        return True
-
-    except Exception as e:
-        notify_error(e)
-        return False
+    return True
 
 
 def get_all_appointments_full():
@@ -229,12 +202,9 @@ def get_user_appointments(user_id: int):
 
 
 def update_appointment_status(row: int, status: str):
-    try:
-        ws = get_ws("appointments")
-        ws.update_cell(row, 10, status)
-        clear_cache("appointments")
-    except Exception as e:
-        notify_error(e)
+    ws = get_ws("appointments")
+    ws.update_cell(row, 10, status)
+    clear_cache("appointments")
 
 
 # =====================================================
@@ -242,42 +212,37 @@ def update_appointment_status(row: int, status: str):
 # =====================================================
 
 def get_free_times(therapist_id: int, date_str: str, duration=30):
-    try:
-        records = get_records("appointments")
+    records = get_records("appointments")
 
-        start = datetime.strptime(date_str + " 09:00", "%Y-%m-%d %H:%M")
-        end = datetime.strptime(date_str + " 18:00", "%Y-%m-%d %H:%M")
+    start = datetime.strptime(date_str + " 09:00", "%Y-%m-%d %H:%M")
+    end = datetime.strptime(date_str + " 18:00", "%Y-%m-%d %H:%M")
 
-        slots = []
-        current = start
+    slots = []
+    current = start
 
-        while current < end:
-            slots.append(current)
-            current += timedelta(minutes=30)
+    while current < end:
+        slots.append(current)
+        current += timedelta(minutes=30)
 
-        busy = []
+    busy = []
 
-        for r in records:
-            if int(r.get("therapist_id", 0)) != therapist_id:
-                continue
+    for r in records:
+        if int(r.get("therapist_id", 0)) != therapist_id:
+            continue
 
-            if r.get("status") not in ["NEW", "CONFIRMED"]:
-                continue
+        if r.get("status") not in ["NEW", "CONFIRMED"]:
+            continue
 
-            try:
-                dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
-                busy.append(dt)
-            except:
-                continue
+        try:
+            dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
+            busy.append(dt)
+        except:
+            continue
 
-        free = []
+    free = []
 
-        for slot in slots:
-            if all(abs((slot - b).total_seconds()) >= duration * 60 for b in busy):
-                free.append(slot.strftime("%H:%M"))
+    for slot in slots:
+        if all(abs((slot - b).total_seconds()) >= duration * 60 for b in busy):
+            free.append(slot.strftime("%H:%M"))
 
-        return free
-
-    except Exception as e:
-        notify_error(e)
-        return []
+    return free
