@@ -3,6 +3,7 @@ import gspread
 import traceback
 import asyncio
 import time
+import uuid
 
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
@@ -12,42 +13,10 @@ from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME, BOT_TOKEN
 OPERATOR_ID = 8752273443
 
 _spreadsheet = None
-_ws_cache = {}
-_cache_time = {}
-CACHE_TTL = 30
 
-DATA_CACHE = {}
-DATA_CACHE_TIME = {}
-DATA_TTL = 30
-
-
-def clear_cache(name=None):
-    if name:
-        DATA_CACHE.pop(name, None)
-        DATA_CACHE_TIME.pop(name, None)
-    else:
-        DATA_CACHE.clear()
-        DATA_CACHE_TIME.clear()
-
-
-def get_cached_data(name, loader):
-    try:
-        now = time.time()
-
-        if name in DATA_CACHE:
-            if now - DATA_CACHE_TIME[name] < DATA_TTL:
-                return DATA_CACHE[name]
-
-        data = loader()
-
-        DATA_CACHE[name] = data
-        DATA_CACHE_TIME[name] = now
-
-        return data
-
-    except Exception as e:
-        notify_error(e)
-        return []
+CACHE = {}
+CACHE_TIME = {}
+CACHE_TTL = 20
 
 
 # =====================================================
@@ -64,25 +33,22 @@ async def notify_error_async(text):
 
         await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
         await bot.session.close()
-
     except:
         pass
 
 
 def notify_error(e: Exception):
-    error_text = (
+    text = (
         "🚨 <b>SHEETS ERROR</b>\n\n"
-        f"{type(e).__name__}\n"
-        f"{str(e)}\n\n"
+        f"{type(e).__name__}\n{str(e)}\n\n"
         f"<pre>{traceback.format_exc()}</pre>"
     )
-
-    print(error_text)
+    print(text)
 
     try:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            loop.create_task(notify_error_async(error_text))
+            loop.create_task(notify_error_async(text))
     except:
         pass
 
@@ -90,12 +56,6 @@ def notify_error(e: Exception):
 # =====================================================
 # AUTH
 # =====================================================
-
-SCOPE = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
 
 def get_client():
     try:
@@ -106,7 +66,10 @@ def get_client():
 
         creds = Credentials.from_service_account_info(
             creds_dict,
-            scopes=SCOPE
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
         )
 
         return gspread.authorize(creds)
@@ -122,69 +85,57 @@ def get_spreadsheet():
     if _spreadsheet:
         return _spreadsheet
 
-    try:
-        client = get_client()
-        if not client:
-            return None
+    client = get_client()
+    if not client:
+        return None
 
+    try:
         _spreadsheet = client.open_by_key(SPREADSHEET_NAME)
         return _spreadsheet
-
     except Exception as e:
         notify_error(e)
         return None
 
-
-# =====================================================
-# WORKSHEET CACHE
-# =====================================================
 
 def get_ws(name):
     try:
-        now = time.time()
-
-        if name in _ws_cache:
-            if now - _cache_time[name] < CACHE_TTL:
-                return _ws_cache[name]
-
         ss = get_spreadsheet()
-        if not ss:
-            return None
-
-        ws = ss.worksheet(name)
-
-        _ws_cache[name] = ws
-        _cache_time[name] = now
-
-        return ws
-
+        return ss.worksheet(name) if ss else None
     except Exception as e:
         notify_error(e)
         return None
 
 
-def safe_get_records(ws):
-    for _ in range(3):
-        try:
-            return ws.get_all_records()
-        except Exception as e:
-            if "429" in str(e):
-                time.sleep(2)
-                continue
-            notify_error(e)
-            return []
-    return []
-
-
-# =====================================================
-# HELPERS
-# =====================================================
-
-def safe_int(value, default=0):
+def get_records(name):
     try:
-        return int(value)
-    except:
-        return default
+        now = time.time()
+
+        if name in CACHE and now - CACHE_TIME[name] < CACHE_TTL:
+            return CACHE[name]
+
+        ws = get_ws(name)
+        if not ws:
+            return []
+
+        data = ws.get_all_records()
+
+        CACHE[name] = data
+        CACHE_TIME[name] = now
+
+        return data
+
+    except Exception as e:
+        notify_error(e)
+        return []
+
+
+def clear_cache(name=None):
+    if name:
+        CACHE.pop(name, None)
+        CACHE_TIME.pop(name, None)
+    else:
+        CACHE.clear()
+        CACHE_TIME.clear()
 
 
 # =====================================================
@@ -192,118 +143,37 @@ def safe_int(value, default=0):
 # =====================================================
 
 def get_user_lang(user_id: int):
-    try:
-        ws = get_ws("users")
-        if not ws:
-            return "ru"
-
-        for r in safe_get_records(ws):
-            if str(r.get("user_id")) == str(user_id):
-                return r.get("lang") or "ru"
-
-    except Exception as e:
-        notify_error(e)
-
+    for r in get_records("users"):
+        if str(r.get("user_id")) == str(user_id):
+            return r.get("lang") or "ru"
     return "ru"
-
-
-def set_user_lang(user_id: int, lang: str):
-    try:
-        ws = get_ws("users")
-        if not ws:
-            return
-
-        records = safe_get_records(ws)
-
-        for i, r in enumerate(records, start=2):
-            if str(r.get("user_id")) == str(user_id):
-                ws.update_cell(i, 2, lang)
-                return
-
-        ws.append_row([user_id, lang])
-
-    except Exception as e:
-        notify_error(e)
-
-
-# =====================================================
-# ADMIN
-# =====================================================
-
-def get_admin_role(user_id: int):
-    try:
-        ws = get_ws("admins")
-        if not ws:
-            return None
-
-        for r in safe_get_records(ws):
-            if str(r.get("user_id")) == str(user_id):
-                return r.get("role")
-
-        return None
-
-    except Exception as e:
-        notify_error(e)
-        return None
 
 
 # =====================================================
 # MASSAGES
 # =====================================================
 
-def get_active_masses(lang="ru"):
-    try:
-        ws = get_ws("masses")
-        if not ws:
-            return []
+def get_active_masses():
+    return [
+        {
+            "id": int(r["id"]),
+            "name": r["name_ru"],
+            "duration": int(r.get("duration_min", 30))
+        }
+        for r in get_records("masses")
+        if str(r.get("active")).lower() == "true"
+    ]
 
-        records = get_cached_data("masses", lambda: safe_get_records(ws))
 
-        return [
-            {
-                "id": safe_int(r.get("id")),
-                "name": r.get("name_ru"),
-                "duration": safe_int(r.get("duration_min"), 30),
-            }
-            for r in records
-            if str(r.get("active")).lower() == "true"
-        ]
-
-    except Exception as e:
-        notify_error(e)
-        return []
+def get_massage_name(massage_id: int):
+    for r in get_records("masses"):
+        if int(r["id"]) == massage_id:
+            return r["name_ru"]
+    return "Неизвестно"
 
 
 # =====================================================
-# THERAPISTS
-# =====================================================
-
-def get_therapists_for_massage(massage_id: int):
-    try:
-        ss = get_spreadsheet()
-        if not ss:
-            return []
-
-        therapists = safe_get_records(ss.worksheet("therapists"))
-        links = safe_get_records(ss.worksheet("therapist_masses"))
-
-        result = []
-
-        for l in links:
-            if safe_int(l.get("massage_id")) == massage_id:
-                for t in therapists:
-                    if safe_int(t.get("id")) == safe_int(l.get("therapist_id")):
-                        result.append(t)
-
-        return result
-
-    except Exception as e:
-        notify_error(e)
-        return []
-
-
-# =====================================================
-# CREATE APPOINTMENT (🔥 ГЛАВНЫЙ ФИКС)
+# APPOINTMENTS (🔥 ЯДРО)
 # =====================================================
 
 def create_appointment(
@@ -319,9 +189,12 @@ def create_appointment(
     try:
         ws = get_ws("appointments")
         if not ws:
-            return None
+            return False
+
+        appointment_id = str(uuid.uuid4())[:8]
 
         row = [
+            appointment_id,
             user_id,
             massage_id,
             therapist_id,
@@ -330,79 +203,77 @@ def create_appointment(
             child_name,
             child_age,
             phone,
-            "pending"
+            "NEW",
+            datetime.now().strftime("%Y-%m-%d %H:%M")
         ]
 
         ws.append_row(row)
-
         clear_cache("appointments")
 
         return True
 
     except Exception as e:
         notify_error(e)
-        return None
+        return False
 
 
-def update_appointment_status(row: int, new_status: str):
+def get_all_appointments_full():
+    return get_records("appointments")
+
+
+def get_user_appointments(user_id: int):
+    return [
+        r for r in get_records("appointments")
+        if str(r.get("user_id")) == str(user_id)
+    ]
+
+
+def update_appointment_status(row: int, status: str):
     try:
         ws = get_ws("appointments")
-        if not ws:
-            return
-
-        ws.update_cell(row, 9, new_status)
+        ws.update_cell(row, 10, status)
         clear_cache("appointments")
-
     except Exception as e:
         notify_error(e)
 
 
 # =====================================================
-# FREE TIMES (🔥 ИСПРАВЛЕНО)
+# FREE TIMES
 # =====================================================
 
-def get_free_times(therapist_id: int, date_str: str, duration_min: int = 30):
+def get_free_times(therapist_id: int, date_str: str, duration=30):
     try:
-        ws = get_ws("appointments")
-        if not ws:
-            return []
+        records = get_records("appointments")
 
-        records = safe_get_records(ws)
-
-        start_hour = 9
-        end_hour = 18
+        start = datetime.strptime(date_str + " 09:00", "%Y-%m-%d %H:%M")
+        end = datetime.strptime(date_str + " 18:00", "%Y-%m-%d %H:%M")
 
         slots = []
-        current = datetime.strptime(f"{date_str} {start_hour}:00", "%Y-%m-%d %H:%M")
+        current = start
 
-        while current < datetime.strptime(f"{date_str} {end_hour}:00", "%Y-%m-%d %H:%M"):
+        while current < end:
             slots.append(current)
             current += timedelta(minutes=30)
 
         busy = []
 
         for r in records:
-            if safe_int(r.get("therapist_id")) != therapist_id:
+            if int(r.get("therapist_id", 0)) != therapist_id:
                 continue
 
-            if r.get("status") not in ["pending", "approved"]:
-                continue
-
-            dt = r.get("datetime")
-            if not dt:
+            if r.get("status") not in ["NEW", "CONFIRMED"]:
                 continue
 
             try:
-                busy_dt = datetime.strptime(dt, "%Y-%m-%d %H:%M")
-                if date_str in dt:
-                    busy.append(busy_dt)
+                dt = datetime.strptime(r["datetime"], "%Y-%m-%d %H:%M")
+                busy.append(dt)
             except:
                 continue
 
         free = []
 
         for slot in slots:
-            if all(abs((slot - b).total_seconds()) >= duration_min * 60 for b in busy):
+            if all(abs((slot - b).total_seconds()) >= duration * 60 for b in busy):
                 free.append(slot.strftime("%H:%M"))
 
         return free
