@@ -251,15 +251,18 @@ async def age(message: Message, state: FSMContext):
     await state.set_state(BookingState.phone)
 
     kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="📱 Отправить номер", request_contact=True)]],
-        resize_keyboard=True,
-        is_persistent=True
+        keyboard=[
+            [KeyboardButton(text="📱 Отправить номер", request_contact=True)]
+        ],
+        resize_keyboard=True
     )
 
-    await asyncio.sleep(0.3)
+    # 💥 ВАЖНО: сначала сообщение БЕЗ клавы
+    await message.answer("📞 Введите номер или нажмите кнопку ниже 👇")
 
+    # 💥 потом ОТДЕЛЬНО сообщение С клавой
     await message.answer(
-        "📱 Нажмите кнопку ниже, чтобы отправить номер",
+        "👇 Отправить номер:",
         reply_markup=kb
     )
 
