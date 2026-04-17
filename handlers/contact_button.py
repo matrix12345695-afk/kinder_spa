@@ -5,7 +5,6 @@ import asyncio
 router = Router()
 
 
-# 🔥 Универсальная функция вызова кнопки
 async def send_contact_keyboard(message: Message):
     kb = ReplyKeyboardMarkup(
         keyboard=[
@@ -15,11 +14,11 @@ async def send_contact_keyboard(message: Message):
         one_time_keyboard=False
     )
 
-    # 💥 очищаем старую клаву
+    # 💥 сброс старой клавиатуры
     await message.answer("⌛", reply_markup=ReplyKeyboardRemove())
     await asyncio.sleep(0.4)
 
-    # 💥 отправляем кнопку
+    # 💥 новая клавиатура
     await message.answer(
         "📱 Нажмите кнопку ниже 👇",
         reply_markup=kb
