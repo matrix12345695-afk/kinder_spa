@@ -14,7 +14,8 @@ from sheets import (
     get_free_times,
     create_appointment,
     notify_error,
-    get_spreadsheet
+    get_spreadsheet,
+    notify_new_appointment  # 🔥 ДОБАВИЛ
 )
 
 from handlers.contact_button import send_contact_keyboard
@@ -133,7 +134,6 @@ class BookingState(StatesGroup):
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
-    # 💥 УБИВАЕМ INLINE КНОПКИ
     try:
         await cb.message.edit_reply_markup(reply_markup=None)
     except:
@@ -175,7 +175,6 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
-    # 💥 УБИВАЕМ INLINE КНОПКИ (КРИТИЧНО)
     try:
         await cb.message.edit_reply_markup(reply_markup=None)
     except:
@@ -204,12 +203,11 @@ async def age(message: Message, state: FSMContext):
     await state.update_data(child_age=age)
     await state.set_state(BookingState.phone)
 
-    # 💥 ТОЛЬКО КНОПКА (без лишних сообщений)
     await send_contact_keyboard(message)
 
 
 # =========================================
-# СОХРАНЕНИЕ
+# 💥 СОХРАНЕНИЕ + УВЕДОМЛЕНИЕ
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
@@ -227,6 +225,15 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             data.get("therapist_id"),
             dt
         )
+
+        # 🔥 ВОТ ОНО — УВЕДОМЛЕНИЕ
+        await notify_new_appointment({
+            "parent": data.get("parent_name"),
+            "child": data.get("child_name"),
+            "phone": phone,
+            "massage_id": data.get("massage_id"),
+            "therapist_id": data.get("therapist_id"),
+        })
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
