@@ -1,17 +1,17 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import *
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from datetime import date, datetime, timedelta
+from datetime import datetime
 import asyncio
-import calendar
 import time
 import re
+
+from config import BOT_TOKEN
 
 from sheets import (
     get_active_masses,
     get_therapists_for_massage,
-    get_free_times,
     create_appointment,
     notify_error,
     get_spreadsheet
@@ -46,20 +46,21 @@ CACHE_TTL = 60
 free_times_cache = {}
 
 
-def get_cache(key):
-    if key in free_times_cache:
-        t, value = free_times_cache[key]
-        if time.time() - t < CACHE_TTL:
-            return value
-    return None
-
-
-def set_cache(key, value):
-    free_times_cache[key] = (time.time(), value)
-
-
 async def run_blocking(func, *args):
     return await asyncio.to_thread(func, *args)
+
+
+# =========================================
+# STATES
+# =========================================
+
+class BookingState(StatesGroup):
+    massage = State()
+    therapist = State()
+    parent = State()
+    child = State()
+    child_age = State()
+    phone = State()
 
 
 # =========================================
@@ -94,19 +95,6 @@ async def start_booking(message: Message, state: FSMContext):
 
 
 # =========================================
-# STATES
-# =========================================
-
-class BookingState(StatesGroup):
-    massage = State()
-    therapist = State()
-    parent = State()
-    child = State()
-    child_age = State()
-    phone = State()
-
-
-# =========================================
 # ВЫБОР МАССАЖА
 # =========================================
 
@@ -120,11 +108,9 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         pass
 
     massage_id = safe_int(cb.data.split("_")[1])
-
     await state.update_data(massage_id=massage_id)
 
     therapists = await run_blocking(get_therapists_for_massage, massage_id)
-
     await state.set_state(BookingState.therapist)
 
     for t in therapists:
@@ -197,7 +183,7 @@ async def age(message: Message, state: FSMContext):
 
 
 # =========================================
-# 💥 СОХРАНЕНИЕ + ОПЕРАТОР
+# 💥 СОХРАНЕНИЕ + ОПЕРАТОР (FIX)
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
@@ -216,13 +202,11 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             dt
         )
 
-        # 📡 ПОЛУЧАЕМ НОМЕР СТРОКИ
         ss = await run_blocking(get_spreadsheet)
         ws = await asyncio.to_thread(ss.worksheet, "appointments")
         rows = await asyncio.to_thread(ws.get_all_values)
         row_number = len(rows)
 
-        # 📩 ОТПРАВКА ОПЕРАТОРУ
         text = (
             "🆕 <b>Новая заявка!</b>\n\n"
             f"👤 {data.get('parent_name')}\n"
@@ -238,7 +222,24 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             ]
         ])
 
-        await message.bot.send_message(OPERATOR_ID, text, reply_markup=kb, parse_mode="HTML")
+        print("📤 Отправка оператору:", OPERATOR_ID)
+
+        bot = Bot(token=BOT_TOKEN)
+
+        try:
+            await bot.send_message(
+                OPERATOR_ID,
+                text,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+            print("✅ ОТПРАВЛЕНО ОПЕРАТОРУ")
+
+        except Exception as e:
+            print("❌ ОШИБКА:", e)
+            await notify_error(e)
+
+        await bot.session.close()
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
