@@ -1,6 +1,5 @@
 from aiogram import Router
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-import asyncio
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 router = Router()
 
@@ -10,16 +9,11 @@ async def send_contact_keyboard(message: Message):
         keyboard=[
             [KeyboardButton(text="📱 Отправить номер", request_contact=True)]
         ],
-        resize_keyboard=True,
-        one_time_keyboard=False
+        resize_keyboard=True
     )
 
-    # 💥 сброс старой клавиатуры
-    await message.answer("⌛", reply_markup=ReplyKeyboardRemove())
-    await asyncio.sleep(0.4)
-
-    # 💥 новая клавиатура
+    # ✅ ОДНО сообщение = ОДНА клавиатура (это ключ)
     await message.answer(
-        "📱 Нажмите кнопку ниже 👇",
+        "📱 Нажмите кнопку ниже чтобы отправить номер 👇",
         reply_markup=kb
     )
