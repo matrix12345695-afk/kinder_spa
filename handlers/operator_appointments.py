@@ -71,7 +71,7 @@ async def process_appointment(cb: CallbackQuery):
             return
 
         # =========================================
-        # ⛔ ПРОВЕРКА СТАТУСА
+        # ⛔ ПРОВЕРКА СТАТУСА (🔥 FIX)
         # =========================================
         try:
             current_status = await asyncio.to_thread(lambda: ws.cell(row, 9).value)
@@ -80,23 +80,25 @@ async def process_appointment(cb: CallbackQuery):
             await cb.message.answer("⚠️ Ошибка чтения")
             return
 
-        if current_status != "pending":
+        if current_status != "NEW":
             await cb.message.edit_reply_markup(reply_markup=None)
             await cb.message.answer("⚠️ Уже обработано")
             return
 
         # =========================================
-        # 📥 ЧИТАЕМ ДАННЫЕ
+        # 📥 ЧИТАЕМ ДАННЫЕ (🔥 FIX ИНДЕКСОВ)
         # =========================================
         try:
             record = await asyncio.to_thread(ws.row_values, row)
 
             client_id = safe_int(record[0]) if len(record) > 0 else None
-            parent_name = record[1] if len(record) > 1 else "—"
-            child_name = record[2] if len(record) > 2 else "—"
-            age = record[3] if len(record) > 3 else "—"
-            phone = record[4] if len(record) > 4 else "—"
-            dt = record[7] if len(record) > 7 else "—"
+            massage_id = record[1] if len(record) > 1 else "—"
+            therapist_id = record[2] if len(record) > 2 else "—"
+            dt = record[3] if len(record) > 3 else "—"
+            parent_name = record[4] if len(record) > 4 else "—"
+            child_name = record[5] if len(record) > 5 else "—"
+            age = record[6] if len(record) > 6 else "—"
+            phone = record[7] if len(record) > 7 else "—"
 
         except Exception as e:
             await notify_error(e)
@@ -104,11 +106,11 @@ async def process_appointment(cb: CallbackQuery):
             return
 
         # =========================================
-        # 🔄 ОБНОВЛЕНИЕ СТАТУСА
+        # 🔄 ОБНОВЛЕНИЕ СТАТУСА (🔥 FIX)
         # =========================================
         try:
             if action == "approve":
-                await run_blocking(update_appointment_status, row, "approved")
+                await run_blocking(update_appointment_status, row, "CONFIRMED")
                 mark = "✅ ПРИНЯТО"
 
                 client_text = (
@@ -118,7 +120,7 @@ async def process_appointment(cb: CallbackQuery):
                 )
 
             else:
-                await run_blocking(update_appointment_status, row, "rejected")
+                await run_blocking(update_appointment_status, row, "CANCELLED")
                 mark = "❌ ОТКЛОНЕНО"
 
                 client_text = (
