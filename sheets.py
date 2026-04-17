@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 
 from config import GOOGLE_CREDENTIALS, SPREADSHEET_NAME, BOT_TOKEN
 
-OPERATOR_ID = 8752273443
+OPERATOR_ID = -4972691257
 
 _spreadsheet = None
 
