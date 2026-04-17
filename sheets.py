@@ -54,6 +54,32 @@ def notify_error(e: Exception):
 
 
 # =====================================================
+# 🔥 НОВАЯ ФУНКЦИЯ (УВЕДОМЛЕНИЕ О ЗАЯВКЕ)
+# =====================================================
+
+async def notify_new_appointment(data):
+    try:
+        from aiogram import Bot
+        bot = Bot(token=BOT_TOKEN)
+
+        text = (
+            "🆕 <b>Новая заявка!</b>\n\n"
+            f"👤 Родитель: {data.get('parent')}\n"
+            f"👶 Ребенок: {data.get('child')}\n"
+            f"📞 Телефон: {data.get('phone')}\n"
+            f"💆 Услуга ID: {data.get('massage_id')}\n"
+            f"👨‍⚕️ Специалист ID: {data.get('therapist_id')}\n"
+            f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        )
+
+        await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
+        await bot.session.close()
+
+    except Exception as e:
+        notify_error(e)
+
+
+# =====================================================
 # AUTH
 # =====================================================
 
@@ -142,7 +168,7 @@ def set_user_lang(user_id: int, lang: str):
 
 
 # =====================================================
-# ADMINS (🔥 ДОБАВЛЕНО)
+# ADMINS
 # =====================================================
 
 def get_admin_role(user_id: int):
@@ -208,7 +234,6 @@ def get_therapists_for_massage(massage_id: int):
             if int(link.get("massage_id", 0)) == massage_id:
                 for t in therapists:
                     if int(t.get("id", 0)) == int(link.get("therapist_id", 0)):
-
                         result.append({
                             "id": t.get("id"),
                             "name": t.get("name"),
@@ -240,16 +265,16 @@ def create_appointment(
     ws = get_ws("appointments")
 
     row = [
-        str(user_id),                               # A user_id
-        int(massage_id),                            # B massage_id
-        int(therapist_id),                          # C therapist_id
-        dt,                                         # D datetime
-        parent_name,                                # E parent_name
-        child_name,                                 # F child_name
-        int(child_age),                             # G child_age
-        phone,                                      # H phone
-        "NEW",                                      # I status
-        datetime.now().strftime("%Y-%m-%d %H:%M")    # J created_at
+        str(user_id),
+        int(massage_id),
+        int(therapist_id),
+        dt,
+        parent_name,
+        child_name,
+        int(child_age),
+        phone,
+        "NEW",
+        datetime.now().strftime("%Y-%m-%d %H:%M")
     ]
 
     ws.append_row(row)
