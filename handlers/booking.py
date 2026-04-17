@@ -16,6 +16,9 @@ from sheets import (
     get_spreadsheet
 )
 
+# 🔥 НОВЫЙ ИМПОРТ
+from handlers.contact_button import send_contact_keyboard
+
 router = Router()
 OPERATOR_ID = 8752273443
 
@@ -62,30 +65,6 @@ async def cached_free_times(therapist_id, date_str, duration):
 
     set_cache(key, result)
     return result
-
-
-# =========================================
-# 🔥 ФУНКЦИЯ КНОПКИ (ГЛАВНЫЙ ФИКС)
-# =========================================
-
-async def send_phone_keyboard(message: Message):
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📱 Отправить номер", request_contact=True)]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False
-    )
-
-    # 💥 сбрасываем старую клаву
-    await message.answer("⌛", reply_markup=ReplyKeyboardRemove())
-    await asyncio.sleep(0.5)
-
-    # 💥 отправляем новую
-    await message.answer(
-        "📱 Нажмите кнопку ниже 👇",
-        reply_markup=kb
-    )
 
 
 # =========================================
@@ -186,7 +165,9 @@ async def age(message: Message, state: FSMContext):
     await state.set_state(BookingState.phone)
 
     await message.answer("📞 Нужно отправить номер")
-    await send_phone_keyboard(message)
+
+    # 🔥 ВЫЗОВ ИЗ ОТДЕЛЬНОГО ФАЙЛА
+    await send_contact_keyboard(message)
 
 
 # =========================================
@@ -235,4 +216,18 @@ async def phone_text(message: Message, state: FSMContext):
     if message.contact:
         return
 
-    await send_phone_keyboard(message)
+    # 🔥 ПОВТОРНЫЙ ВЫЗОВ КНОПКИ
+    await send_contact_keyboard(message)
+
+
+# =========================================
+# AGE PARSER
+# =========================================
+
+def parse_age(text):
+    text = text.lower()
+    try:
+        num = int(''.join(filter(str.isdigit, text)))
+        return num * 12 if "лет" in text or "год" in text else num
+    except:
+        return None
