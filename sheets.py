@@ -339,3 +339,5 @@ def get_free_times(therapist_id: int, date_str: str, duration=30):
             free.append(slot.strftime("%H:%M"))
 
     return free
+def get_all_appointments_full():
+    return get_records("appointments")
