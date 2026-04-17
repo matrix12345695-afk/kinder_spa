@@ -163,3 +163,6 @@ async def send_welcome(message: Message, lang: str):
         reply_markup=main_menu(lang),
         parse_mode="HTML"
     )
+@router.message()
+async def debug_chat_id(message: Message):
+    await message.answer(f"CHAT ID: {message.chat.id}")
