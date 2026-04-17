@@ -36,7 +36,7 @@ async def send_contact_keyboard(message: Message):
 
 
 # =========================================
-# ВЫБОР МАССАЖА → МАССАЖИСТЫ
+# ВЫБОР МАССАЖА → МАССАЖИСТЫ (🔥 FIX)
 # =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
@@ -49,6 +49,8 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         await cb.message.answer("⚠️ Нет доступных специалистов")
         return
 
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
     for t in therapists:
         text = (
             f"👩‍⚕️ {t.get('name')}\n\n"
@@ -56,27 +58,6 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
             f"📝 {t.get('description') or 'Опытный специалист'}"
         )
 
-        await cb.message.answer(
-            text,
-            reply_markup=ReplyKeyboardRemove()
-        )
-
-        await cb.message.answer(
-            "Выбрать специалиста:",
-            reply_markup=None
-        )
-
-        await cb.message.answer(
-            "👇",
-            reply_markup=None
-        )
-
-        await cb.message.answer(
-            text,
-            reply_markup=None
-        )
-
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         kb = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
                 text="Выбрать",
@@ -84,6 +65,7 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
             )
         ]])
 
+        # ✅ ТОЛЬКО ОДНО сообщение
         await cb.message.answer(text, reply_markup=kb)
 
 
@@ -116,7 +98,7 @@ async def parent(message: Message, state: FSMContext):
 async def child(message: Message, state: FSMContext):
     await state.update_data(child=message.text)
 
-    # 💥 ВАЖНО: вызываем кнопку
+    # 💥 ВЫЗОВ КНОПКИ
     await send_contact_keyboard(message)
 
     await state.set_state(Form.phone)
@@ -143,8 +125,7 @@ async def phone_contact(message: Message, state: FSMContext):
     )
 
     await message.answer(
-        "✅ <b>Ваша заявка принята!</b>\n\n"
-        "📞 Мы скоро свяжемся с вами",
+        "✅ <b>Ваша заявка принята!</b>\n\n📞 Мы скоро свяжемся с вами",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove()
     )
@@ -153,7 +134,7 @@ async def phone_contact(message: Message, state: FSMContext):
 
 
 # =========================================
-# ТЕЛЕФОН (ЕСЛИ ВВЕЛ ВРУЧНУЮ)
+# ТЕЛЕФОН (ВРУЧНУЮ)
 # =========================================
 @router.message(Form.phone)
 async def phone_manual(message: Message, state: FSMContext):
@@ -171,8 +152,7 @@ async def phone_manual(message: Message, state: FSMContext):
     )
 
     await message.answer(
-        "✅ <b>Ваша заявка принята!</b>\n\n"
-        "📞 Мы скоро свяжемся с вами",
+        "✅ <b>Ваша заявка принята!</b>\n\n📞 Мы скоро свяжемся с вами",
         parse_mode="HTML",
         reply_markup=ReplyKeyboardRemove()
     )
