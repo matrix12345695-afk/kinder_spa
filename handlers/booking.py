@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 import asyncio
 import calendar
 import time
+import re  # 🔥 добавили
 
 from sheets import (
     get_active_masses,
@@ -16,7 +17,6 @@ from sheets import (
     get_spreadsheet
 )
 
-# 🔥 НОВЫЙ ИМПОРТ
 from handlers.contact_button import send_contact_keyboard
 
 router = Router()
@@ -28,6 +28,19 @@ def safe_int(value, default=0):
         return int(value)
     except:
         return default
+
+
+# 🔥 НОРМАЛИЗАЦИЯ ТЕЛЕФОНА
+def normalize_phone(text: str):
+    digits = re.sub(r"\D", "", text)
+
+    if digits.startswith("998") and len(digits) == 12:
+        return "+" + digits
+
+    if len(digits) == 9:
+        return "+998" + digits
+
+    return None
 
 
 CACHE_TTL = 60
@@ -164,9 +177,6 @@ async def age(message: Message, state: FSMContext):
     await state.update_data(child_age=age)
     await state.set_state(BookingState.phone)
 
-    await message.answer("📞 Нужно отправить номер")
-
-    # 🔥 ВЫЗОВ ИЗ ОТДЕЛЬНОГО ФАЙЛА
     await send_contact_keyboard(message)
 
 
@@ -206,18 +216,34 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         await message.answer("⚠️ Ошибка сохранения")
 
 
+# =========================================
+# ТЕЛЕФОН КНОПКА
+# =========================================
+
 @router.message(BookingState.phone, F.contact)
 async def phone_contact(message: Message, state: FSMContext):
     await save_booking(message, state, message.contact.phone_number)
 
+
+# =========================================
+# ТЕЛЕФОН ВРУЧНУЮ
+# =========================================
 
 @router.message(BookingState.phone)
 async def phone_text(message: Message, state: FSMContext):
     if message.contact:
         return
 
-    # 🔥 ПОВТОРНЫЙ ВЫЗОВ КНОПКИ
-    await send_contact_keyboard(message)
+    phone = normalize_phone(message.text)
+
+    if not phone:
+        await message.answer(
+            "❌ Введите корректный номер\n\nПример:\n+998901234567"
+        )
+        await send_contact_keyboard(message)
+        return
+
+    await save_booking(message, state, phone)
 
 
 # =========================================
