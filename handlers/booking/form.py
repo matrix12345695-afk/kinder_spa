@@ -36,7 +36,7 @@ async def send_contact_keyboard(message: Message):
 
 
 # =========================================
-# ВЫБОР МАССАЖА → МАССАЖИСТЫ (🔥 FIX)
+# ВЫБОР МАССАЖА → МАССАЖИСТЫ
 # =========================================
 @router.callback_query(F.data.startswith("massage_"))
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
@@ -65,7 +65,6 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
             )
         ]])
 
-        # ✅ ТОЛЬКО ОДНО сообщение
         await cb.message.answer(text, reply_markup=kb)
 
 
@@ -98,7 +97,6 @@ async def parent(message: Message, state: FSMContext):
 async def child(message: Message, state: FSMContext):
     await state.update_data(child=message.text)
 
-    # 💥 ВЫЗОВ КНОПКИ
     await send_contact_keyboard(message)
 
     await state.set_state(Form.phone)
@@ -110,14 +108,13 @@ async def child(message: Message, state: FSMContext):
 @router.message(Form.phone, F.contact)
 async def phone_contact(message: Message, state: FSMContext):
     phone = message.contact.phone_number
-
     data = await state.get_data()
 
     create_appointment(
         message.from_user.id,
         data.get("parent"),
         data.get("child"),
-        "",
+        0,  # 💥 ФИКС
         phone,
         data.get("massage_id", 1),
         data.get("therapist_id"),
@@ -144,7 +141,7 @@ async def phone_manual(message: Message, state: FSMContext):
         message.from_user.id,
         data.get("parent"),
         data.get("child"),
-        "",
+        0,  # 💥 ФИКС
         message.text,
         data.get("massage_id", 1),
         data.get("therapist_id"),
