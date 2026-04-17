@@ -69,7 +69,7 @@ async def admin_all(cb: CallbackQuery):
             reverse=True
         )
 
-        for r in rows[:30]:
+        for index, r in enumerate(rows, start=2):
             try:
                 massage = get_massage_name(int(r.get("massage_id", 0)))
                 dt = r.get("datetime", "—")
@@ -78,7 +78,8 @@ async def admin_all(cb: CallbackQuery):
                 phone = r.get("phone", "—")
                 status = r.get("status", "NEW")
 
-                appointment_id = r.get("appointment_id")
+                # 🔥 ВАЖНО: используем row index
+                appointment_row = index
 
                 text = (
                     f"🧾 <b>Запись</b>\n\n"
@@ -87,7 +88,8 @@ async def admin_all(cb: CallbackQuery):
                     f"👩 <b>Родитель:</b> {parent}\n"
                     f"🧸 <b>Ребёнок:</b> {child}\n"
                     f"📞 <b>Телефон:</b> {phone}\n"
-                    f"📌 <b>Статус:</b> {status}"
+                    f"📌 <b>Статус:</b> {status}\n"
+                    f"🆔 <b>Строка:</b> {appointment_row}"
                 )
 
                 kb = InlineKeyboardMarkup(
@@ -95,17 +97,17 @@ async def admin_all(cb: CallbackQuery):
                         [
                             InlineKeyboardButton(
                                 text="✅ Подтвердить",
-                                callback_data=f"admin_confirm_{appointment_id}"
+                                callback_data=f"admin_confirm_{appointment_row}"
                             ),
                             InlineKeyboardButton(
                                 text="🏁 Завершить",
-                                callback_data=f"admin_done_{appointment_id}"
+                                callback_data=f"admin_done_{appointment_row}"
                             ),
                         ],
                         [
                             InlineKeyboardButton(
                                 text="❌ Отменить",
-                                callback_data=f"admin_cancel_{appointment_id}"
+                                callback_data=f"admin_cancel_{appointment_row}"
                             )
                         ]
                     ]
@@ -122,7 +124,7 @@ async def admin_all(cb: CallbackQuery):
 
 
 # =========================
-# ОБНОВЛЕНИЕ СТАТУСА (УНИВЕРСАЛ)
+# ОБНОВЛЕНИЕ СТАТУСА
 # =========================
 async def change_status(cb: CallbackQuery, new_status: str, success_text: str):
     try:
@@ -131,39 +133,42 @@ async def change_status(cb: CallbackQuery, new_status: str, success_text: str):
         if get_admin_role(cb.from_user.id) != "admin":
             return
 
-        appointment_id = cb.data.split("_")[-1]
+        # 🔥 ТЕПЕРЬ ЭТО ROW
+        row = int(cb.data.split("_")[-1])
+
+        update_appointment_status(row, new_status)
 
         rows = get_all_appointments_full()
 
-        for index, r in enumerate(rows, start=2):
-            if str(r.get("appointment_id")) == str(appointment_id):
+        # берём запись по row
+        record = rows[row - 2] if row - 2 < len(rows) else None
 
-                update_appointment_status(index, new_status)
+        if record:
+            user_id = int(record.get("user_id", 0))
 
-                user_id = int(r.get("user_id", 0))
-
-                # уведомление клиенту
-                if user_id:
-                    try:
-                        messages = {
-                            "CONFIRMED": "✅ Ваша запись подтверждена!\nЖдём вас 💚",
-                            "DONE": "🏁 Процедура завершена.\nСпасибо за визит 💚",
-                            "CANCELLED": "❌ Ваша запись отменена.\nСвяжитесь с нами."
-                        }
-
-                        await cb.bot.send_message(user_id, messages.get(new_status, "Статус обновлён"))
-                    except Exception as e:
-                        notify_error(e)
-
+            if user_id:
                 try:
-                    await cb.message.edit_text(
-                        cb.message.text + f"\n\n<b>{new_status}</b>",
-                        parse_mode="HTML"
-                    )
-                except:
-                    pass
+                    messages = {
+                        "CONFIRMED": "✅ Ваша запись подтверждена!\nЖдём вас 💚",
+                        "DONE": "🏁 Процедура завершена.\nСпасибо за визит 💚",
+                        "CANCELLED": "❌ Ваша запись отменена.\nСвяжитесь с нами."
+                    }
 
-                return
+                    await cb.bot.send_message(
+                        user_id,
+                        messages.get(new_status, "Статус обновлён")
+                    )
+
+                except Exception as e:
+                    notify_error(e)
+
+        try:
+            await cb.message.edit_text(
+                cb.message.text + f"\n\n<b>{new_status}</b>",
+                parse_mode="HTML"
+            )
+        except:
+            pass
 
     except Exception as e:
         notify_error(e)
