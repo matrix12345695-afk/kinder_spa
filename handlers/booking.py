@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 import asyncio
 import calendar
 import time
-import re  # 🔥 добавили
+import re
 
 from sheets import (
     get_active_masses,
@@ -30,7 +30,6 @@ def safe_int(value, default=0):
         return default
 
 
-# 🔥 НОРМАЛИЗАЦИЯ ТЕЛЕФОНА
 def normalize_phone(text: str):
     digits = re.sub(r"\D", "", text)
 
@@ -134,6 +133,12 @@ class BookingState(StatesGroup):
 async def choose_massage(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
+    # 💥 УБИВАЕМ INLINE КНОПКИ
+    try:
+        await cb.message.edit_reply_markup(reply_markup=None)
+    except:
+        pass
+
     massage_id = safe_int(cb.data.split("_")[1])
     masses = await run_blocking(get_active_masses, "ru")
 
@@ -163,6 +168,28 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
+# ВЫБОР МАССАЖИСТА
+# =========================================
+
+@router.callback_query(F.data.startswith("therapist_"))
+async def choose_therapist(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+
+    # 💥 УБИВАЕМ INLINE КНОПКИ (КРИТИЧНО)
+    try:
+        await cb.message.edit_reply_markup(reply_markup=None)
+    except:
+        pass
+
+    therapist_id = safe_int(cb.data.split("_")[1])
+    await state.update_data(therapist_id=therapist_id)
+
+    await state.set_state(BookingState.parent)
+
+    await cb.message.answer("👤 Введите имя родителя")
+
+
+# =========================================
 # ВОЗРАСТ → КНОПКА
 # =========================================
 
@@ -177,6 +204,7 @@ async def age(message: Message, state: FSMContext):
     await state.update_data(child_age=age)
     await state.set_state(BookingState.phone)
 
+    # 💥 ТОЛЬКО КНОПКА (без лишних сообщений)
     await send_contact_keyboard(message)
 
 
@@ -217,17 +245,13 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
 
 
 # =========================================
-# ТЕЛЕФОН КНОПКА
+# ТЕЛЕФОН
 # =========================================
 
 @router.message(BookingState.phone, F.contact)
 async def phone_contact(message: Message, state: FSMContext):
     await save_booking(message, state, message.contact.phone_number)
 
-
-# =========================================
-# ТЕЛЕФОН ВРУЧНУЮ
-# =========================================
 
 @router.message(BookingState.phone)
 async def phone_text(message: Message, state: FSMContext):
@@ -237,9 +261,7 @@ async def phone_text(message: Message, state: FSMContext):
     phone = normalize_phone(message.text)
 
     if not phone:
-        await message.answer(
-            "❌ Введите корректный номер\n\nПример:\n+998901234567"
-        )
+        await message.answer("❌ Введите корректный номер\n+998901234567")
         await send_contact_keyboard(message)
         return
 
