@@ -14,8 +14,7 @@ from sheets import (
     get_free_times,
     create_appointment,
     notify_error,
-    get_spreadsheet,
-    notify_new_appointment  # 🔥 ДОБАВИЛ
+    get_spreadsheet
 )
 
 from handlers.contact_button import send_contact_keyboard
@@ -63,23 +62,6 @@ async def run_blocking(func, *args):
     return await asyncio.to_thread(func, *args)
 
 
-async def cached_free_times(therapist_id, date_str, duration):
-    key = (therapist_id, date_str, duration)
-
-    cached = get_cache(key)
-    if cached is not None:
-        return cached
-
-    try:
-        result = await run_blocking(get_free_times, therapist_id, date_str, duration)
-    except Exception as e:
-        await notify_error(e)
-        result = []
-
-    set_cache(key, result)
-    return result
-
-
 # =========================================
 # СТАРТ
 # =========================================
@@ -118,8 +100,6 @@ async def start_booking(message: Message, state: FSMContext):
 class BookingState(StatesGroup):
     massage = State()
     therapist = State()
-    date = State()
-    time = State()
     parent = State()
     child = State()
     child_age = State()
@@ -140,14 +120,8 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         pass
 
     massage_id = safe_int(cb.data.split("_")[1])
-    masses = await run_blocking(get_active_masses, "ru")
 
-    for m in masses:
-        if safe_int(m.get("id")) == massage_id:
-            await state.update_data(
-                massage_id=massage_id,
-                massage_duration=m.get("duration", 30)
-            )
+    await state.update_data(massage_id=massage_id)
 
     therapists = await run_blocking(get_therapists_for_massage, massage_id)
 
@@ -161,7 +135,10 @@ async def choose_massage(cb: CallbackQuery, state: FSMContext):
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✨ Выбрать", callback_data=f"therapist_{t.get('id')}")
+            InlineKeyboardButton(
+                text="✨ Выбрать",
+                callback_data=f"therapist_{t.get('id')}"
+            )
         ]])
 
         await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
@@ -184,13 +161,26 @@ async def choose_therapist(cb: CallbackQuery, state: FSMContext):
     await state.update_data(therapist_id=therapist_id)
 
     await state.set_state(BookingState.parent)
-
     await cb.message.answer("👤 Введите имя родителя")
 
 
 # =========================================
-# ВОЗРАСТ → КНОПКА
+# ДАННЫЕ
 # =========================================
+
+@router.message(BookingState.parent)
+async def parent(message: Message, state: FSMContext):
+    await state.update_data(parent_name=message.text)
+    await state.set_state(BookingState.child)
+    await message.answer("👶 Имя ребенка")
+
+
+@router.message(BookingState.child)
+async def child(message: Message, state: FSMContext):
+    await state.update_data(child_name=message.text)
+    await state.set_state(BookingState.child_age)
+    await message.answer("🎂 Возраст ребенка")
+
 
 @router.message(BookingState.child_age)
 async def age(message: Message, state: FSMContext):
@@ -207,13 +197,13 @@ async def age(message: Message, state: FSMContext):
 
 
 # =========================================
-# 💥 СОХРАНЕНИЕ + УВЕДОМЛЕНИЕ
+# 💥 СОХРАНЕНИЕ + ОПЕРАТОР
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
         data = await state.get_data()
-        dt = f"{data.get('date')} {data.get('time')}"
+        dt = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         create_appointment(
             message.from_user.id,
@@ -226,20 +216,33 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             dt
         )
 
-        # 🔥 ВОТ ОНО — УВЕДОМЛЕНИЕ
-        await notify_new_appointment({
-            "parent": data.get("parent_name"),
-            "child": data.get("child_name"),
-            "phone": phone,
-            "massage_id": data.get("massage_id"),
-            "therapist_id": data.get("therapist_id"),
-        })
+        # 📡 ПОЛУЧАЕМ НОМЕР СТРОКИ
+        ss = await run_blocking(get_spreadsheet)
+        ws = await asyncio.to_thread(ss.worksheet, "appointments")
+        rows = await asyncio.to_thread(ws.get_all_values)
+        row_number = len(rows)
+
+        # 📩 ОТПРАВКА ОПЕРАТОРУ
+        text = (
+            "🆕 <b>Новая заявка!</b>\n\n"
+            f"👤 {data.get('parent_name')}\n"
+            f"👶 {data.get('child_name')}\n"
+            f"📞 {phone}\n"
+            f"🆔 {row_number}"
+        )
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_{row_number}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row_number}")
+            ]
+        ])
+
+        await message.bot.send_message(OPERATOR_ID, text, reply_markup=kb, parse_mode="HTML")
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
-            "📅 Мы уже записали вас\n"
-            "📞 Скоро с вами свяжется администратор\n\n"
-            "💚 Спасибо за выбор Kinder Spa!",
+            "📞 Скоро с вами свяжется администратор",
             reply_markup=ReplyKeyboardRemove(),
             parse_mode="HTML"
         )
