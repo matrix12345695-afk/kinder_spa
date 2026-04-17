@@ -163,4 +163,3 @@ async def send_welcome(message: Message, lang: str):
         reply_markup=main_menu(lang),
         parse_mode="HTML"
     )
-@router.message()
