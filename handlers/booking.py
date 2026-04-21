@@ -13,7 +13,7 @@ from sheets import (
     create_appointment,
     notify_error,
     get_spreadsheet,
-    OPERATOR_ID  # ✅ берем из sheets
+    OPERATOR_ID
 )
 
 from handlers.contact_button import send_contact_keyboard
@@ -177,7 +177,7 @@ async def age(message: Message, state: FSMContext):
 
 
 # =========================================
-# 💥 СОХРАНЕНИЕ + ОПЕРАТОР (FIX)
+# 💥 СОХРАНЕНИЕ + ЖЁСТКИЙ ФИКС ОТПРАВКИ
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
@@ -202,7 +202,7 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         row_number = len(rows)
 
         text = (
-            "🆕 <b>Новая заявка!</b>\n\n"
+            "🆕 <b>НОВАЯ ЗАЯВКА!</b>\n\n"
             f"👤 {data.get('parent_name')}\n"
             f"👶 {data.get('child_name')}\n"
             f"📞 {phone}\n"
@@ -216,17 +216,24 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             ]
         ])
 
-        print("📤 Отправка оператору:", OPERATOR_ID)
+        print("📤 ПЫТАЮСЬ ОТПРАВИТЬ:", OPERATOR_ID)
 
-        # ✅ ВАЖНО: используем message.bot
-        await message.bot.send_message(
-            OPERATOR_ID,
-            text,
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
+        try:
+            await message.bot.send_message(
+                chat_id=OPERATOR_ID,
+                text=text,
+                reply_markup=kb,
+                parse_mode="HTML"
+            )
+            print("✅ ОТПРАВЛЕНО")
 
-        print("✅ ОТПРАВЛЕНО ОПЕРАТОРУ")
+        except Exception as e:
+            print("❌ ОШИБКА:", e)
+
+            await message.bot.send_message(
+                message.from_user.id,
+                f"❌ НЕ ДОШЛО В ГРУППУ:\n{e}"
+            )
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
