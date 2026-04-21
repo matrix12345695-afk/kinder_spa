@@ -1,4 +1,4 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import *
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -205,17 +205,18 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             f"🆔 user_id: {message.from_user.id}"
         )
 
-        try:
-            await message.bot.send_message(
-                chat_id=OPERATOR_ID,
-                text=text,
-                parse_mode="HTML"
-            )
-            print("✅ УСПЕХ: отправлено оператору")
+        # 💥 СТАБИЛЬНАЯ ОТПРАВКА
+        bot = Bot(token=message.bot.token)
 
-        except Exception as e:
-            print("❌ ОШИБКА ОТПРАВКИ:", e)
-            await message.answer(f"❌ ERROR: {e}")
+        await bot.send_message(
+            chat_id=OPERATOR_ID,
+            text=text,
+            parse_mode="HTML"
+        )
+
+        await bot.session.close()
+
+        print("✅ УСПЕХ: отправлено оператору")
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
@@ -227,17 +228,17 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         await state.clear()
 
     except Exception as e:
-        print("💀 КРИТИЧЕСКАЯ ОШИБКА:", e)
+        print("💀 ОШИБКА:", e)
         await notify_error(e)
         await message.answer("⚠️ Ошибка сохранения")
 
 
 # =========================================
-# 💥 DEBUG ЛОВУШКА (ЗАМЕНА ТЕЛЕФОНА)
+# 💥 ЕДИНСТВЕННЫЙ ПЕРЕХВАТ
 # =========================================
 
 @router.message()
-async def debug_all_messages(message: Message, state: FSMContext):
+async def handle_phone(message: Message, state: FSMContext):
     current_state = await state.get_state()
 
     print("📥 MESSAGE:", message.text)
@@ -248,16 +249,12 @@ async def debug_all_messages(message: Message, state: FSMContext):
 
         if message.contact:
             phone = message.contact.phone_number
-            print("📱 CONTACT PHONE:", phone)
         else:
             phone = normalize_phone(message.text)
-            print("📱 TEXT PHONE:", phone)
 
         if not phone:
             await message.answer("❌ Введите номер ещё раз\n+998901234567")
             return
-
-        print("🔥 ВЫЗЫВАЕМ save_booking")
 
         await save_booking(message, state, phone)
 
@@ -273,33 +270,3 @@ def parse_age(text):
         return num * 12 if "лет" in text or "год" in text else num
     except:
         return None
-# =========================================
-# 💥 ГЛОБАЛЬНЫЙ ПЕРЕХВАТ (FIX ВСЕГО)
-# =========================================
-
-@router.message()
-async def catch_all(message: Message, state: FSMContext):
-    current_state = await state.get_state()
-
-    print("🧠 GLOBAL CATCH")
-    print("📥 TEXT:", message.text)
-    print("📥 CONTACT:", message.contact)
-    print("📥 STATE:", current_state)
-
-    # 👉 ЕСЛИ ЭТАП ТЕЛЕФОНА
-    if current_state == BookingState.phone.state:
-
-        if message.contact:
-            phone = message.contact.phone_number
-            print("📱 CONTACT PHONE:", phone)
-        else:
-            phone = normalize_phone(message.text)
-            print("📱 TEXT PHONE:", phone)
-
-        if not phone:
-            await message.answer("❌ Введите номер ещё раз\n+998901234567")
-            return
-
-        print("🔥 SAVE BOOKING CALL")
-
-        await save_booking(message, state, phone)
