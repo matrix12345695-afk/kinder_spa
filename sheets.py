@@ -339,3 +339,25 @@ def get_free_times(therapist_id: int, date_str: str, duration=30):
             free.append(slot.strftime("%H:%M"))
 
     return free
+from aiogram import Bot
+
+async def notify_new_appointment(data: dict):
+    try:
+        bot = Bot(token=BOT_TOKEN)
+
+        text = (
+            "🔥 <b>НОВАЯ ЗАЯВКА</b>\n\n"
+            f"👤 Родитель: {data.get('parent')}\n"
+            f"🧸 Ребёнок: {data.get('child')}\n"
+            f"📞 Телефон: {data.get('phone')}\n"
+            f"💆 Массаж ID: {data.get('massage_id')}\n"
+            f"👩‍⚕️ Специалист ID: {data.get('therapist_id')}"
+        )
+
+        await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
+        await bot.session.close()
+
+        print("✅ ОТПРАВЛЕНО ОПЕРАТОРУ")
+
+    except Exception as e:
+        print("❌ ОШИБКА notify_new_appointment:", e)
