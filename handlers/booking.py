@@ -179,15 +179,19 @@ async def age(message: Message, state: FSMContext):
 # 💥 СОХРАНЕНИЕ
 # =========================================
 
+from aiogram.exceptions import TelegramBadRequest
+
 async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
         data = await state.get_data()
         dt = datetime.now().strftime("%Y-%m-%d %H:%M")
 
         print("🔥 SAVE BOOKING START")
-        print("👉 OPERATOR_ID:", OPERATOR_ID)
+        print("👉 OPERATOR_ID:", OPERATOR_ID, type(OPERATOR_ID))
 
-        create_appointment(
+        # 💥 ВАЖНО: через поток
+        await run_blocking(
+            create_appointment,
             message.from_user.id,
             data.get("parent_name"),
             data.get("child_name"),
@@ -206,17 +210,20 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             f"🆔 user_id: {message.from_user.id}"
         )
 
-        # 💥 отправка оператору С ЛОГАМИ
+        # 💥 ЧЁТКАЯ ОТПРАВКА С ЛОГАМИ
         try:
             await message.bot.send_message(
-                chat_id=OPERATOR_ID,
+                chat_id=int(OPERATOR_ID),  # 💣 гарант int
                 text=text,
                 parse_mode="HTML"
             )
             print("✅ УСПЕХ: отправлено оператору")
 
+        except TelegramBadRequest as e:
+            print("💀 TELEGRAM BAD REQUEST:", e)
+
         except Exception as e:
-            print("💀 ОШИБКА ОТПРАВКИ ОПЕРАТОРУ:", e)
+            print("💀 ДРУГАЯ ОШИБКА:", e)
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
@@ -228,7 +235,7 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         await state.clear()
 
     except Exception as e:
-        print("💀 ОШИБКА:", e)
+        print("💀 ОШИБКА SAVE_BOOKING:", e)
         await notify_error(e)
         await message.answer("⚠️ Ошибка сохранения")
 
