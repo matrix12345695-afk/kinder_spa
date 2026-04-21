@@ -8,12 +8,16 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN, WEBHOOK_URL
 
 # 🔥 HANDLERS
-from handlers.start import router as start_router
-from handlers.booking import router as booking_router
-from handlers.contacts import router as contacts_router
-from handlers.my_appointments import router as my_router
-from handlers.admin import router as admin_router
-from handlers.operator_appointments import router as operator_router
+dp.include_router(start_router)
+dp.include_router(contacts_router)
+dp.include_router(my_router)
+dp.include_router(admin_router)
+
+# 🔥 booking ПЕРЕД operator
+dp.include_router(booking_router)
+
+# ❗ operator САМЫЙ ПОСЛЕДНИЙ
+dp.include_router(operator_router)
 
 # ❌ УБРАЛИ router отсюда (он не нужен)
 # from handlers.contact_button import router as contact_button_router
