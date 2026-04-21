@@ -85,44 +85,14 @@ async def choose_language(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# 🔥 ГЛАВНЫЙ ФИКС
+# 🔥 ПЕРЕДАЧА В BOOKING
 # =========================================
 @router.callback_query(F.data == "menu_booking")
 async def open_booking(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
-    # 💥 УБИВАЕМ INLINE МЕНЮ (КЛЮЧ)
-    try:
-        await cb.message.edit_reply_markup(reply_markup=None)
-    except:
-        pass
-
-    from sheets import get_active_masses
-
-    lang = get_user_lang(cb.from_user.id) or "ru"
-    massages = get_active_masses(lang)
-
-    if not massages:
-        await cb.message.answer("❌ Пока нет доступных услуг")
-        return
-
-    for m in massages:
-        m_id = int(m.get("id", 0))
-        name = m.get("name", "—")
-        price = m.get("price", "—")
-
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="Выбрать",
-                callback_data=f"massage_{m_id}"
-            )
-        ]])
-
-        await cb.message.answer(
-            f"💆 <b>{name}</b>\n💰 {price} сум",
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
+    # ❗ просто отправляем кнопку как текст
+    await cb.message.answer("📋 Записаться")
 
 
 # =========================================
