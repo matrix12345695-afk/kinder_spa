@@ -85,14 +85,16 @@ async def choose_language(cb: CallbackQuery, state: FSMContext):
 
 
 # =========================================
-# 🔥 ПРАВИЛЬНЫЙ ЗАПУСК BOOKING
+# 🔥 ФИКС: ПРЯМОЙ ЗАПУСК BOOKING
 # =========================================
 @router.callback_query(F.data == "menu_booking")
 async def open_booking(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
-    # 💥 просто отправляем текст (AIogram сам поймает)
-    await cb.message.answer("📋 Записаться")
+    # 💥 напрямую запускаем booking
+    from handlers.booking import start_booking
+
+    await start_booking(cb.message, state)
 
 
 # =========================================
