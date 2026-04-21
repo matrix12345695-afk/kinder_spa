@@ -1,4 +1,4 @@
-from aiogram import Router, F, Bot
+from aiogram import Router, F
 from aiogram.types import *
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -7,20 +7,18 @@ import asyncio
 import time
 import re
 
-from config import BOT_TOKEN
-
 from sheets import (
     get_active_masses,
     get_therapists_for_massage,
     create_appointment,
     notify_error,
-    get_spreadsheet
+    get_spreadsheet,
+    OPERATOR_ID  # ✅ берем из sheets
 )
 
 from handlers.contact_button import send_contact_keyboard
 
 router = Router()
-OPERATOR_ID = 8752273443
 
 
 def safe_int(value, default=0):
@@ -40,10 +38,6 @@ def normalize_phone(text: str):
         return "+998" + digits
 
     return None
-
-
-CACHE_TTL = 60
-free_times_cache = {}
 
 
 async def run_blocking(func, *args):
@@ -224,22 +218,15 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
 
         print("📤 Отправка оператору:", OPERATOR_ID)
 
-        bot = Bot(token=BOT_TOKEN)
+        # ✅ ВАЖНО: используем message.bot
+        await message.bot.send_message(
+            OPERATOR_ID,
+            text,
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
 
-        try:
-            await bot.send_message(
-                OPERATOR_ID,
-                text,
-                reply_markup=kb,
-                parse_mode="HTML"
-            )
-            print("✅ ОТПРАВЛЕНО ОПЕРАТОРУ")
-
-        except Exception as e:
-            print("❌ ОШИБКА:", e)
-            await notify_error(e)
-
-        await bot.session.close()
+        print("✅ ОТПРАВЛЕНО ОПЕРАТОРУ")
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
