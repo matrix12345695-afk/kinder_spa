@@ -1,5 +1,4 @@
 import logging
-import os
 
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -8,19 +7,12 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN, WEBHOOK_URL
 
 # 🔥 HANDLERS
-dp.include_router(start_router)
-dp.include_router(contacts_router)
-dp.include_router(my_router)
-dp.include_router(admin_router)
-
-# 🔥 booking ПЕРЕД operator
-dp.include_router(booking_router)
-
-# ❗ operator САМЫЙ ПОСЛЕДНИЙ
-dp.include_router(operator_router)
-
-# ❌ УБРАЛИ router отсюда (он не нужен)
-# from handlers.contact_button import router as contact_button_router
+from handlers.start import router as start_router
+from handlers.booking import router as booking_router
+from handlers.contacts import router as contacts_router
+from handlers.my_appointments import router as my_router
+from handlers.admin import router as admin_router
+from handlers.operator_appointments import router as operator_router
 
 from sheets import get_all_appointments_full
 
@@ -55,10 +47,12 @@ dp.include_router(start_router)
 dp.include_router(contacts_router)
 dp.include_router(my_router)
 dp.include_router(admin_router)
-dp.include_router(operator_router)
 
-# ✅ ВСЕГДА ПОСЛЕДНИМ
+# 🔥 booking должен быть ПЕРЕД operator
 dp.include_router(booking_router)
+
+# ❗ operator САМЫЙ ПОСЛЕДНИЙ
+dp.include_router(operator_router)
 
 logger.info("✅ All routers connected")
 
@@ -71,11 +65,9 @@ async def on_startup():
     try:
         logger.info("🚀 START BOT")
 
-        # 🔗 Устанавливаем webhook
         await bot.set_webhook(WEBHOOK_URL)
         logger.info("✅ Webhook set")
 
-        # ⚡ Прогрев данных
         logger.info("⚡ Preloading data...")
         get_all_appointments_full()
 
@@ -90,7 +82,9 @@ async def webhook(request: Request):
     try:
         data = await request.json()
         update = types.Update.model_validate(data)
+
         await dp.feed_update(bot=bot, update=update)
+
         return {"ok": True}
 
     except Exception as e:
