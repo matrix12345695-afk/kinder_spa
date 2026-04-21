@@ -175,7 +175,7 @@ async def age(message: Message, state: FSMContext):
 
 
 # =========================================
-# 💥 СОХРАНЕНИЕ + ЖЁСТКАЯ ДИАГНОСТИКА
+# 💥 СОХРАНЕНИЕ
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
@@ -233,27 +233,33 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
 
 
 # =========================================
-# ТЕЛЕФОН
+# 💥 DEBUG ЛОВУШКА (ЗАМЕНА ТЕЛЕФОНА)
 # =========================================
 
-@router.message(BookingState.phone, F.contact)
-async def phone_contact(message: Message, state: FSMContext):
-    await save_booking(message, state, message.contact.phone_number)
+@router.message()
+async def debug_all_messages(message: Message, state: FSMContext):
+    current_state = await state.get_state()
 
+    print("📥 MESSAGE:", message.text)
+    print("📥 CONTACT:", message.contact)
+    print("📥 STATE:", current_state)
 
-@router.message(BookingState.phone)
-async def phone_text(message: Message, state: FSMContext):
-    if message.contact:
-        return
+    if current_state == BookingState.phone.state:
 
-    phone = normalize_phone(message.text)
+        if message.contact:
+            phone = message.contact.phone_number
+            print("📱 CONTACT PHONE:", phone)
+        else:
+            phone = normalize_phone(message.text)
+            print("📱 TEXT PHONE:", phone)
 
-    if not phone:
-        await message.answer("❌ Введите корректный номер\n+998901234567")
-        await send_contact_keyboard(message)
-        return
+        if not phone:
+            await message.answer("❌ Введите номер ещё раз\n+998901234567")
+            return
 
-    await save_booking(message, state, phone)
+        print("🔥 ВЫЗЫВАЕМ save_booking")
+
+        await save_booking(message, state, phone)
 
 
 # =========================================
