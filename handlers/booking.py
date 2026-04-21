@@ -205,15 +205,12 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             f"🆔 user_id: {message.from_user.id}"
         )
 
-        bot = Bot(token=message.bot.token)
-
-        await bot.send_message(
+        # 💥 ВАЖНО: НЕ СОЗДАЕМ НОВЫЙ BOT
+        await message.bot.send_message(
             chat_id=OPERATOR_ID,
             text=text,
             parse_mode="HTML"
         )
-
-        await bot.session.close()
 
         print("✅ УСПЕХ: отправлено оператору")
 
