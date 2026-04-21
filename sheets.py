@@ -3,7 +3,6 @@ import gspread
 import traceback
 import asyncio
 import time
-import uuid
 
 from datetime import datetime, timedelta
 from google.oauth2.service_account import Credentials
@@ -33,8 +32,11 @@ async def notify_error_async(text):
 
         await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
         await bot.session.close()
-    except:
-        pass
+
+        print("✅ ERROR отправлен оператору")
+
+    except Exception as e:
+        print("💀 notify_error_async:", e)
 
 
 def notify_error(e: Exception):
@@ -51,32 +53,6 @@ def notify_error(e: Exception):
             loop.create_task(notify_error_async(text))
     except:
         pass
-
-
-# =====================================================
-# 🔥 НОВАЯ ФУНКЦИЯ (УВЕДОМЛЕНИЕ О ЗАЯВКЕ)
-# =====================================================
-
-async def notify_new_appointment(data):
-    try:
-        from aiogram import Bot
-        bot = Bot(token=BOT_TOKEN)
-
-        text = (
-            "🆕 <b>Новая заявка!</b>\n\n"
-            f"👤 Родитель: {data.get('parent')}\n"
-            f"👶 Ребенок: {data.get('child')}\n"
-            f"📞 Телефон: {data.get('phone')}\n"
-            f"💆 Услуга ID: {data.get('massage_id')}\n"
-            f"👨‍⚕️ Специалист ID: {data.get('therapist_id')}\n"
-            f"🕐 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        )
-
-        await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
-        await bot.session.close()
-
-    except Exception as e:
-        notify_error(e)
 
 
 # =====================================================
@@ -339,25 +315,3 @@ def get_free_times(therapist_id: int, date_str: str, duration=30):
             free.append(slot.strftime("%H:%M"))
 
     return free
-from aiogram import Bot
-
-async def notify_new_appointment(data: dict):
-    try:
-        bot = Bot(token=BOT_TOKEN)
-
-        text = (
-            "🔥 <b>НОВАЯ ЗАЯВКА</b>\n\n"
-            f"👤 Родитель: {data.get('parent')}\n"
-            f"🧸 Ребёнок: {data.get('child')}\n"
-            f"📞 Телефон: {data.get('phone')}\n"
-            f"💆 Массаж ID: {data.get('massage_id')}\n"
-            f"👩‍⚕️ Специалист ID: {data.get('therapist_id')}"
-        )
-
-        await bot.send_message(OPERATOR_ID, text, parse_mode="HTML")
-        await bot.session.close()
-
-        print("✅ ОТПРАВЛЕНО ОПЕРАТОРУ")
-
-    except Exception as e:
-        print("❌ ОШИБКА notify_new_appointment:", e)
