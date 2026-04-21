@@ -15,8 +15,8 @@ from handlers.my_appointments import router as my_router
 from handlers.admin import router as admin_router
 from handlers.operator_appointments import router as operator_router
 
-# 🆕 НОВЫЙ РОУТЕР (КНОПКА ТЕЛЕФОНА)
-from handlers.contact_button import router as contact_button_router
+# ❌ УБРАЛИ router отсюда (он не нужен)
+# from handlers.contact_button import router as contact_button_router
 
 from sheets import get_all_appointments_full
 
@@ -44,17 +44,17 @@ app = FastAPI()
 
 
 # =====================================================
-# ROUTERS
+# ROUTERS (🔥 ПРАВИЛЬНЫЙ ПОРЯДОК)
 # =====================================================
+
 dp.include_router(start_router)
-dp.include_router(booking_router)
 dp.include_router(contacts_router)
 dp.include_router(my_router)
 dp.include_router(admin_router)
 dp.include_router(operator_router)
 
-# 🔥 ДОБАВИЛИ СЮДА
-dp.include_router(contact_button_router)
+# ✅ ВСЕГДА ПОСЛЕДНИМ
+dp.include_router(booking_router)
 
 logger.info("✅ All routers connected")
 
