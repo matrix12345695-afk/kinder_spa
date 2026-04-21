@@ -4,7 +4,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from datetime import datetime
 import asyncio
-import time
 import re
 
 from sheets import (
@@ -12,7 +11,6 @@ from sheets import (
     get_therapists_for_massage,
     create_appointment,
     notify_error,
-    get_spreadsheet,
     OPERATOR_ID
 )
 
@@ -177,7 +175,7 @@ async def age(message: Message, state: FSMContext):
 
 
 # =========================================
-# 💥 СОХРАНЕНИЕ + ЖЁСТКИЙ ФИКС ОТПРАВКИ
+# 💥 СОХРАНЕНИЕ → ОТПРАВКА В ЛИЧКУ
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
@@ -196,44 +194,31 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             dt
         )
 
-        ss = await run_blocking(get_spreadsheet)
-        ws = await asyncio.to_thread(ss.worksheet, "appointments")
-        rows = await asyncio.to_thread(ws.get_all_values)
-        row_number = len(rows)
-
         text = (
             "🆕 <b>НОВАЯ ЗАЯВКА!</b>\n\n"
-            f"👤 {data.get('parent_name')}\n"
-            f"👶 {data.get('child_name')}\n"
-            f"📞 {phone}\n"
-            f"🆔 {row_number}"
+            f"👤 Родитель: {data.get('parent_name')}\n"
+            f"👶 Ребенок: {data.get('child_name')}\n"
+            f"📞 Телефон: {phone}\n\n"
+            f"🆔 user_id: {message.from_user.id}"
         )
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="✅ Принять", callback_data=f"approve_{row_number}"),
-                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_{row_number}")
+                InlineKeyboardButton(text="✅ Принять", callback_data="approve_1"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data="reject_1")
             ]
         ])
 
-        print("📤 ПЫТАЮСЬ ОТПРАВИТЬ:", OPERATOR_ID)
+        print("📤 ОТПРАВКА В ЛИЧКУ:", OPERATOR_ID)
 
-        try:
-            await message.bot.send_message(
-                chat_id=OPERATOR_ID,
-                text=text,
-                reply_markup=kb,
-                parse_mode="HTML"
-            )
-            print("✅ ОТПРАВЛЕНО")
+        await message.bot.send_message(
+            chat_id=OPERATOR_ID,
+            text=text,
+            reply_markup=kb,
+            parse_mode="HTML"
+        )
 
-        except Exception as e:
-            print("❌ ОШИБКА:", e)
-
-            await message.bot.send_message(
-                message.from_user.id,
-                f"❌ НЕ ДОШЛО В ГРУППУ:\n{e}"
-            )
+        print("✅ ДОШЛО ОПЕРАТОРУ")
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
@@ -245,6 +230,7 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         await state.clear()
 
     except Exception as e:
+        print("❌ ОШИБКА:", e)
         await notify_error(e)
         await message.answer("⚠️ Ошибка сохранения")
 
