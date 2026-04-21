@@ -27,14 +27,17 @@ async def run_blocking(func, *args):
 async def process_appointment(cb: CallbackQuery):
     await cb.answer()
 
+    print("🔥 CALLBACK RECEIVED:", cb.data)
+
     try:
         user_id = cb.from_user.id
 
         # 🔐 ПРОВЕРКА РОЛИ
         try:
             role = await run_blocking(get_admin_role, user_id)
+            print("👤 ROLE:", role)
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             role = None
 
         if role != "operator":
@@ -46,12 +49,14 @@ async def process_appointment(cb: CallbackQuery):
             action, row_str = cb.data.split("_")
             row = safe_int(row_str)
 
+            print("📌 ACTION:", action, "ROW:", row)
+
             if row <= 1:
                 await cb.message.answer("⚠️ Некорректный ID")
                 return
 
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             await cb.message.answer("⚠️ Ошибка данных")
             return
 
@@ -60,15 +65,16 @@ async def process_appointment(cb: CallbackQuery):
             ss = await run_blocking(get_spreadsheet)
             ws = await asyncio.to_thread(ss.worksheet, "appointments")
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             await cb.message.answer("⚠️ Ошибка базы")
             return
 
         # ⛔ СТАТУС
         try:
             current_status = await asyncio.to_thread(lambda: ws.cell(row, 9).value)
+            print("📊 STATUS:", current_status)
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             await cb.message.answer("⚠️ Ошибка чтения")
             return
 
@@ -81,6 +87,8 @@ async def process_appointment(cb: CallbackQuery):
         try:
             record = await asyncio.to_thread(ws.row_values, row)
 
+            print("📦 RECORD:", record)
+
             client_id = safe_int(record[0]) if len(record) > 0 else None
             dt = record[3] if len(record) > 3 else "—"
             parent_name = record[4] if len(record) > 4 else "—"
@@ -88,7 +96,7 @@ async def process_appointment(cb: CallbackQuery):
             phone = record[7] if len(record) > 7 else "—"
 
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             await cb.message.answer("⚠️ Ошибка данных")
             return
 
@@ -115,16 +123,17 @@ async def process_appointment(cb: CallbackQuery):
                 )
 
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
             await cb.message.answer("⚠️ Ошибка обновления")
             return
 
         # 📩 КЛИЕНТУ
-        if client_id:
+        if client_id and client_id > 0:
             try:
                 await cb.bot.send_message(client_id, client_text, parse_mode="HTML")
+                print("📩 CLIENT NOTIFIED:", client_id)
             except Exception as e:
-                notify_error(e)
+                await notify_error(e)
 
         # 🧹 КНОПКИ
         try:
@@ -135,7 +144,7 @@ async def process_appointment(cb: CallbackQuery):
         # ✏️ ОБНОВЛЕНИЕ ТЕКСТА
         try:
             new_text = (
-                cb.message.text +
+                (cb.message.text or "") +
                 f"\n\n<b>{mark}</b>\n"
                 f"👤 {parent_name} / {child_name}\n"
                 f"📞 {phone}\n"
@@ -145,8 +154,8 @@ async def process_appointment(cb: CallbackQuery):
             await cb.message.edit_text(new_text, parse_mode="HTML")
 
         except Exception as e:
-            notify_error(e)
+            await notify_error(e)
 
     except Exception as e:
-        notify_error(e)
+        await notify_error(e)
         await cb.message.answer("⚠️ Ошибка обработки")
