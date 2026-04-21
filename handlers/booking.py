@@ -273,3 +273,33 @@ def parse_age(text):
         return num * 12 if "лет" in text or "год" in text else num
     except:
         return None
+# =========================================
+# 💥 ГЛОБАЛЬНЫЙ ПЕРЕХВАТ (FIX ВСЕГО)
+# =========================================
+
+@router.message()
+async def catch_all(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+
+    print("🧠 GLOBAL CATCH")
+    print("📥 TEXT:", message.text)
+    print("📥 CONTACT:", message.contact)
+    print("📥 STATE:", current_state)
+
+    # 👉 ЕСЛИ ЭТАП ТЕЛЕФОНА
+    if current_state == BookingState.phone.state:
+
+        if message.contact:
+            phone = message.contact.phone_number
+            print("📱 CONTACT PHONE:", phone)
+        else:
+            phone = normalize_phone(message.text)
+            print("📱 TEXT PHONE:", phone)
+
+        if not phone:
+            await message.answer("❌ Введите номер ещё раз\n+998901234567")
+            return
+
+        print("🔥 SAVE BOOKING CALL")
+
+        await save_booking(message, state, phone)
