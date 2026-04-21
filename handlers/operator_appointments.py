@@ -30,22 +30,18 @@ async def process_appointment(cb: CallbackQuery):
     try:
         user_id = cb.from_user.id
 
-        # =========================================
         # 🔐 ПРОВЕРКА РОЛИ
-        # =========================================
         try:
             role = await run_blocking(get_admin_role, user_id)
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
             role = None
 
         if role != "operator":
             await cb.message.answer("❌ У вас нет доступа")
             return
 
-        # =========================================
         # 🔍 РАЗБОР CALLBACK
-        # =========================================
         try:
             action, row_str = cb.data.split("_")
             row = safe_int(row_str)
@@ -55,28 +51,24 @@ async def process_appointment(cb: CallbackQuery):
                 return
 
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
             await cb.message.answer("⚠️ Ошибка данных")
             return
 
-        # =========================================
-        # 📊 ПОЛУЧАЕМ ТАБЛИЦУ
-        # =========================================
+        # 📊 ТАБЛИЦА
         try:
             ss = await run_blocking(get_spreadsheet)
             ws = await asyncio.to_thread(ss.worksheet, "appointments")
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
             await cb.message.answer("⚠️ Ошибка базы")
             return
 
-        # =========================================
-        # ⛔ ПРОВЕРКА СТАТУСА (🔥 FIX)
-        # =========================================
+        # ⛔ СТАТУС
         try:
             current_status = await asyncio.to_thread(lambda: ws.cell(row, 9).value)
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
             await cb.message.answer("⚠️ Ошибка чтения")
             return
 
@@ -85,29 +77,22 @@ async def process_appointment(cb: CallbackQuery):
             await cb.message.answer("⚠️ Уже обработано")
             return
 
-        # =========================================
-        # 📥 ЧИТАЕМ ДАННЫЕ (🔥 FIX ИНДЕКСОВ)
-        # =========================================
+        # 📥 ДАННЫЕ
         try:
             record = await asyncio.to_thread(ws.row_values, row)
 
             client_id = safe_int(record[0]) if len(record) > 0 else None
-            massage_id = record[1] if len(record) > 1 else "—"
-            therapist_id = record[2] if len(record) > 2 else "—"
             dt = record[3] if len(record) > 3 else "—"
             parent_name = record[4] if len(record) > 4 else "—"
             child_name = record[5] if len(record) > 5 else "—"
-            age = record[6] if len(record) > 6 else "—"
             phone = record[7] if len(record) > 7 else "—"
 
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
             await cb.message.answer("⚠️ Ошибка данных")
             return
 
-        # =========================================
-        # 🔄 ОБНОВЛЕНИЕ СТАТУСА (🔥 FIX)
-        # =========================================
+        # 🔄 СТАТУС
         try:
             if action == "approve":
                 await run_blocking(update_appointment_status, row, "CONFIRMED")
@@ -130,30 +115,24 @@ async def process_appointment(cb: CallbackQuery):
                 )
 
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
             await cb.message.answer("⚠️ Ошибка обновления")
             return
 
-        # =========================================
-        # 📩 ОТПРАВКА КЛИЕНТУ
-        # =========================================
+        # 📩 КЛИЕНТУ
         if client_id:
             try:
                 await cb.bot.send_message(client_id, client_text, parse_mode="HTML")
             except Exception as e:
-                await notify_error(e)
+                notify_error(e)
 
-        # =========================================
-        # 🧹 УБИРАЕМ КНОПКИ
-        # =========================================
+        # 🧹 КНОПКИ
         try:
             await cb.message.edit_reply_markup(reply_markup=None)
         except:
             pass
 
-        # =========================================
-        # ✏️ ОБНОВЛЯЕМ ТЕКСТ
-        # =========================================
+        # ✏️ ОБНОВЛЕНИЕ ТЕКСТА
         try:
             new_text = (
                 cb.message.text +
@@ -166,8 +145,8 @@ async def process_appointment(cb: CallbackQuery):
             await cb.message.edit_text(new_text, parse_mode="HTML")
 
         except Exception as e:
-            await notify_error(e)
+            notify_error(e)
 
     except Exception as e:
-        await notify_error(e)
+        notify_error(e)
         await cb.message.answer("⚠️ Ошибка обработки")
