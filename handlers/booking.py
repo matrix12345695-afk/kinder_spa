@@ -1,4 +1,4 @@
-from aiogram import Router, F, Bot
+from aiogram import Router, F
 from aiogram.types import *
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -171,6 +171,7 @@ async def age(message: Message, state: FSMContext):
     await state.update_data(child_age=age)
     await state.set_state(BookingState.phone)
 
+    await message.answer("📞 Отправьте номер или нажмите кнопку ниже")
     await send_contact_keyboard(message)
 
 
@@ -205,14 +206,17 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             f"🆔 user_id: {message.from_user.id}"
         )
 
-        # 💥 ВАЖНО: НЕ СОЗДАЕМ НОВЫЙ BOT
-        await message.bot.send_message(
-            chat_id=OPERATOR_ID,
-            text=text,
-            parse_mode="HTML"
-        )
+        # 💥 отправка оператору С ЛОГАМИ
+        try:
+            await message.bot.send_message(
+                chat_id=OPERATOR_ID,
+                text=text,
+                parse_mode="HTML"
+            )
+            print("✅ УСПЕХ: отправлено оператору")
 
-        print("✅ УСПЕХ: отправлено оператору")
+        except Exception as e:
+            print("💀 ОШИБКА ОТПРАВКИ ОПЕРАТОРУ:", e)
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
@@ -230,7 +234,7 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
 
 
 # =========================================
-# 💥 ТОЛЬКО ДЛЯ ТЕЛЕФОНА (ФИКС)
+# ТЕЛЕФОН
 # =========================================
 
 @router.message(BookingState.phone)
