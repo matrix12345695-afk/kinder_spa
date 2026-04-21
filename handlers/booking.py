@@ -205,7 +205,6 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             f"🆔 user_id: {message.from_user.id}"
         )
 
-        # 💥 СТАБИЛЬНАЯ ОТПРАВКА
         bot = Bot(token=message.bot.token)
 
         await bot.send_message(
@@ -234,29 +233,26 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
 
 
 # =========================================
-# 💥 ЕДИНСТВЕННЫЙ ПЕРЕХВАТ
+# 💥 ТОЛЬКО ДЛЯ ТЕЛЕФОНА (ФИКС)
 # =========================================
 
-@router.message()
+@router.message(BookingState.phone)
 async def handle_phone(message: Message, state: FSMContext):
-    current_state = await state.get_state()
 
-    print("📥 MESSAGE:", message.text)
-    print("📥 CONTACT:", message.contact)
-    print("📥 STATE:", current_state)
+    print("🔥 HANDLE PHONE TRIGGERED")
 
-    if current_state == BookingState.phone.state:
+    if message.contact:
+        phone = message.contact.phone_number
+    else:
+        phone = normalize_phone(message.text)
 
-        if message.contact:
-            phone = message.contact.phone_number
-        else:
-            phone = normalize_phone(message.text)
+    if not phone:
+        await message.answer("❌ Введите номер ещё раз\n+998901234567")
+        return
 
-        if not phone:
-            await message.answer("❌ Введите номер ещё раз\n+998901234567")
-            return
+    print("🔥 ВЫЗЫВАЕМ save_booking")
 
-        await save_booking(message, state, phone)
+    await save_booking(message, state, phone)
 
 
 # =========================================
