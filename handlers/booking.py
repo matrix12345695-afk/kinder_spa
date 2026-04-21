@@ -175,13 +175,16 @@ async def age(message: Message, state: FSMContext):
 
 
 # =========================================
-# 💥 СОХРАНЕНИЕ → ОТПРАВКА В ЛИЧКУ
+# 💥 СОХРАНЕНИЕ + ЖЁСТКАЯ ДИАГНОСТИКА
 # =========================================
 
 async def save_booking(message: Message, state: FSMContext, phone: str):
     try:
         data = await state.get_data()
         dt = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        print("🔥 SAVE BOOKING START")
+        print("👉 OPERATOR_ID:", OPERATOR_ID)
 
         create_appointment(
             message.from_user.id,
@@ -202,23 +205,17 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
             f"🆔 user_id: {message.from_user.id}"
         )
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Принять", callback_data="approve_1"),
-                InlineKeyboardButton(text="❌ Отклонить", callback_data="reject_1")
-            ]
-        ])
+        try:
+            await message.bot.send_message(
+                chat_id=OPERATOR_ID,
+                text=text,
+                parse_mode="HTML"
+            )
+            print("✅ УСПЕХ: отправлено оператору")
 
-        print("📤 ОТПРАВКА В ЛИЧКУ:", OPERATOR_ID)
-
-        await message.bot.send_message(
-            chat_id=OPERATOR_ID,
-            text=text,
-            reply_markup=kb,
-            parse_mode="HTML"
-        )
-
-        print("✅ ДОШЛО ОПЕРАТОРУ")
+        except Exception as e:
+            print("❌ ОШИБКА ОТПРАВКИ:", e)
+            await message.answer(f"❌ ERROR: {e}")
 
         await message.answer(
             "🎉 <b>Ваша заявка принята!</b>\n\n"
@@ -230,7 +227,7 @@ async def save_booking(message: Message, state: FSMContext, phone: str):
         await state.clear()
 
     except Exception as e:
-        print("❌ ОШИБКА:", e)
+        print("💀 КРИТИЧЕСКАЯ ОШИБКА:", e)
         await notify_error(e)
         await message.answer("⚠️ Ошибка сохранения")
 
