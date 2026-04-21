@@ -92,7 +92,7 @@ async def open_booking(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
 
     # 💥 напрямую запускаем booking
-    from handlers.booking import start_booking
+    from handlers.booking.booking import start_booking
 
     await start_booking(cb.message, state)
 
